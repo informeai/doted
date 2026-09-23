@@ -1,0 +1,20 @@
+# Binários
+/doted
+/dist/
+*.exe
+*.test
+
+# Cobertura e profiling
+*.out
+*.prof
+coverage.*
+
+# Workspace local do Go
+go.work
+go.work.sum
+
+# Editores e sistema
+.vscode/
+.idea/
+*.swp
+.DS_Store
