@@ -94,6 +94,8 @@ type Game struct {
 	lastDuration               time.Duration               // how long the last foreground command took
 	focused                    bool                        // whether the window had the focus last tick
 	linkCache                  linkCache                   // the last link looked up under the mouse
+	watches                    map[*jobs.Job]*jobWatch     // what the job strip read from each job; see strip.go
+	stripHits                  []stripHit                  // the strip's clickable spots in the last frame
 	opener                     func(*Game, []string) error // starts the program that opens a link
 	notifier                   func(title, body string)    // shows a desktop notification
 	outTop, outBottom, outLeft float64
@@ -268,6 +270,7 @@ func (g *Game) Update() error {
 	g.handleMouse(time.Now())
 	g.jobs.Poll(time.Now(), g.handleJobEvent)
 	g.flushNotices()
+	g.watchJobs(time.Now())
 
 	switch {
 	case (!g.panel.open || g.panel.kind == panelHistory) && clipboardChord(ebiten.KeyF):
@@ -396,6 +399,8 @@ func (g *Game) handleKeyboard() {
 			g.openPanel()
 		case inpututil.IsKeyJustPressed(ebiten.KeyR):
 			g.openHistorySearch()
+		case stripDigit() > 0:
+			g.openStripCard(stripDigit())
 		case inpututil.IsKeyJustPressed(ebiten.KeyD):
 			if g.editor.Empty() {
 				g.requestQuit()

@@ -101,6 +101,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	inputTop := lowerRule - gap - float64(len(inputRows))*f.lineH
 	upperRule := inputTop - gap
 	outputBottom := upperRule - gap
+	// The job strip sits between the output and the input.
+	stripTop := outputBottom
+	if sh := g.stripHeight(now); sh > 0 {
+		stripTop = outputBottom - sh
+		outputBottom = stripTop - gap
+	}
 	g.outputRows = max(1, int((outputBottom-pad)/f.lineH))
 
 	sb, jobCursor := g.scrollback, -1
@@ -121,6 +127,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawScrollback(screen, sb, jobCursor, pad, outputBottom, now)
 		g.drawLinkHover(screen)
 	}
+	g.drawStrip(screen, pad, w-pad, stripTop, now)
 	switch {
 	case g.panel.open && g.panel.kind == panelHelp:
 		g.drawHelpPanel(screen, pad, w-pad, upperRule-gap)

@@ -27,7 +27,7 @@ func (g *Game) submit() {
 	g.startBlock(cmd, j, background, time.Now())
 	if background {
 		j.Listed = true
-		g.scrollback.Append(terminal.System, fmt.Sprintf("[%d] running in background: %s · ctrl+t to see jobs", j.ID, j.Command), time.Now())
+		g.scrollback.Append(terminal.System, fmt.Sprintf("[%d] running in background: %s%s", j.ID, j.Command, g.jobsHint()), time.Now())
 		return
 	}
 	g.attached = j

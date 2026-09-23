@@ -131,6 +131,15 @@ Comandos que prendem o terminal (servidores, watchers, builds longos) podem ir p
 
 Cada job guarda a própria saída desde o início, inclusive o que imprimiu enquanto estava em background. Quando um job termina, uma mensagem aparece na tela principal, e a barra de status mostra quantos jobs estão rodando.
 
+**Faixa de jobs ao vivo**: cada job em background aparece como um cartão entre a saída e a linha de entrada, com um nome curto (`dev` para `npm run dev`, `watch` para `make watch`), há quanto tempo roda e as últimas linhas da saída, atualizadas ao vivo. Não há layout para gerenciar: o cartão aparece quando o job vai para o background e some alguns segundos depois de ele terminar (20 segundos quando falha). A barra na borda esquerda e a bolinha mostram o estado: cor de destaque, pulsando, enquanto roda; verde quando termina bem; vermelho quando falha.
+
+Os cartões leem a saída enquanto ela chega:
+
+- uma linha que parece erro (`error`, `FAIL`, `panic`, `fatal`, `Traceback`) deixa o cartão vermelho, com um brilho que pisca uma vez, e aparece em vermelho no cartão; uma linha de sucesso depois (`ok`, `PASS`, `ready`, `compiled`), como num watcher que volta a passar, desfaz isso;
+- a primeira URL local que o job imprime (`http://localhost:5173/`, típica de servidores de desenvolvimento) vira um link no cartão.
+
+Clicar num cartão, ou Ctrl+1 a Ctrl+9, abre a visão completa do job. Quando não cabem todos, os mais recentes aparecem e os outros ficam num cartão `+N` que abre a lista. Para desligar a faixa ou mudar quantas linhas cada cartão mostra, use `[jobs] strip` e `strip_lines`.
+
 **Lista de jobs** (Ctrl+T ou `jobs`): mostra cada job com status, tempo e a última linha de saída.
 
 | Tecla | Ação |
@@ -194,6 +203,7 @@ EDITOR = "nvim"
 | `[scrollback]` | `lines` |
 | `[history]` | `save` (guardar os comandos entre sessões), `lines` |
 | `[clipboard]` | `system` (copiar e colar pela área de transferência do sistema; com `false`, fica tudo dentro do doted) |
+| `[jobs]` | `strip` (a faixa de jobs ao vivo acima da entrada), `strip_lines` (quantas linhas cada cartão mostra; padrão 2) |
 | `[links]` | `editor` (comando que abre um arquivo clicado, com `{file}`, `{line}` e `{col}`; por exemplo `"zed {file}:{line}:{col}"`) |
 | `[notify]` | `enabled`, `after_seconds` (quanto um comando precisa durar para notificar; padrão 10) |
 | `[status]` | `context` (branch do git com os arquivos alterados e duração do último comando na barra de status) |
@@ -267,6 +277,7 @@ internal/
     gitlogo.go           logo do Git desenhado a partir do SVG oficial
     gitanim.go           animações do branch: rolagem, giro do logo, faíscas e fade
     gitdelete.go         animação ao apagar branches e tags
+    strip.go             faixa de jobs ao vivo acima da entrada
   config/                arquivo TOML: padrões (default.toml), validação e watcher
   fonts/                 resolução da fonte por nome ou arquivo, com variantes
   jobs/                  jobs em execução ou finalizados, cada um com sua saída

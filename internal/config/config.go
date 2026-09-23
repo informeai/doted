@@ -32,6 +32,7 @@ type Config struct {
 	History    History    `toml:"history"`
 	Clipboard  Clipboard  `toml:"clipboard"`
 	Links      Links      `toml:"links"`
+	Jobs       Jobs       `toml:"jobs"`
 	Notify     Notify     `toml:"notify"`
 	Status     Status     `toml:"status"`
 	Colors     Colors     `toml:"colors"`
@@ -46,6 +47,13 @@ type Links struct {
 	// {file}, {line} and {col} are replaced. Empty picks VS Code when
 	// installed, else the system's opener.
 	Editor string `toml:"editor"`
+}
+
+type Jobs struct {
+	// Strip shows each background job as a live card above the input.
+	Strip bool `toml:"strip"`
+	// StripLines is how many of a job's last lines its card shows.
+	StripLines int `toml:"strip_lines"`
 }
 
 type Notify struct {
@@ -246,6 +254,7 @@ func (c Config) validate() error {
 	check(c.Animation.FadeInMs >= 0 && c.Animation.FadeInMs <= 5000, "animation.fade_in_ms must be between 0 and 5000")
 	check(c.Scrollback.Lines >= 100, "scrollback.lines must be at least 100")
 	check(c.History.Lines >= 100, "history.lines must be at least 100")
+	check(c.Jobs.StripLines >= 1 && c.Jobs.StripLines <= 10, "jobs.strip_lines must be between 1 and 10")
 	return errors.Join(errs...)
 }
 

@@ -96,6 +96,9 @@ func (g *Game) handleMouse(now time.Time) {
 	}
 	mx, my := ebiten.CursorPosition()
 	x, y := float64(mx), float64(my)
+	if !g.outSel.dragging && g.handleStripMouse(x, y) {
+		return
+	}
 	over := !g.panel.open && y >= g.outTop && y < g.outBottom
 	if _, _, ok := g.hoveredLink(x, y); ok && over {
 		g.setCursorShapeTo(ebiten.CursorShapePointer)

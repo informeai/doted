@@ -122,6 +122,19 @@ func (j *Job) LastLine() string {
 	return ""
 }
 
+// Tail is the newest n non-blank lines of output, oldest first, for
+// previews.
+func (j *Job) Tail(n int) []string {
+	var out []string
+	for i := j.Output.Len() - 1; i >= 0 && len(out) < n; i-- {
+		if s := strings.TrimRight(j.Output.At(i).Text(), " "); strings.TrimSpace(s) != "" {
+			out = append(out, s)
+		}
+	}
+	slices.Reverse(out)
+	return out
+}
+
 // Manager owns every job, running or finished, oldest first.
 type Manager struct {
 	jobs   []*Job

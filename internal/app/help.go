@@ -39,6 +39,7 @@ var helpKeys = []struct{ keys, desc string }{
 	{"ctrl+c", "interrupt the running command, or discard the line"},
 	{"ctrl+b", "send the running command to the background"},
 	{"ctrl+t", "list background jobs"},
+	{"ctrl+1..9", "open the job on that card of the strip above the input"},
 	{"ctrl+l", "clear the screen"},
 	{"pgup · pgdn", "scroll the output"},
 }
