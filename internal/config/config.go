@@ -55,8 +55,8 @@ type Notify struct {
 }
 
 type Status struct {
-	// Context shows the git branch, the project's Go or Node version and how
-	// long the last command took.
+	// Context shows the git branch with what changed and how long the last
+	// command took.
 	Context bool `toml:"context"`
 }
 

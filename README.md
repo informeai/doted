@@ -101,7 +101,7 @@ Segurando **Cmd** (Ctrl no Linux e Windows), URLs e caminhos de arquivos que exi
 
 ### Barra de status e notificações
 
-Depois do diretório, a barra de status mostra o contexto do projeto: o branch do git (com `*` quando há mudanças), a versão do Go (do `go.mod`) ou do Node e quanto tempo o último comando levou, como em `~/Projects/doted   git main* · go 1.26 · last 1.2s`. O git e o node rodam em segundo plano, quando o diretório muda, depois de cada comando, quando a janela volta ao foco e a cada 15 segundos.
+Depois do diretório, a barra de status mostra o contexto do projeto. Primeiro vem o branch do git: o logo do Git, na cor do texto do tema (`foreground`), e o nome do branch em branco. Ao lado, o que mudou no repositório, cada tipo na sua cor: `~2` alterados (amarelo), `+1` adicionados (verde), `-1` removidos (vermelho), `?2` não rastreados, `!1` em conflito e `↑1`/`↓2` commits à frente/atrás do remoto. Depois, quanto tempo o último comando levou (`last 1.2s`). Se o caminho for longo, ele encurta para dar lugar ao contexto. O git roda em segundo plano, quando o diretório muda, depois de cada comando, quando a janela volta ao foco e a cada 15 segundos.
 
 Quando um comando que levou pelo menos 10 segundos termina com o doted em segundo plano (outra janela em foco), o sistema mostra uma notificação com o resultado e o comando. No macOS ela vem pelo `osascript`, no Linux pelo `notify-send` e no Windows pelo PowerShell.
 
@@ -190,7 +190,7 @@ EDITOR = "nvim"
 | `[clipboard]` | `system` (copiar e colar pela área de transferência do sistema; com `false`, fica tudo dentro do doted) |
 | `[links]` | `editor` (comando que abre um arquivo clicado, com `{file}`, `{line}` e `{col}`; por exemplo `"zed {file}:{line}:{col}"`) |
 | `[notify]` | `enabled`, `after_seconds` (quanto um comando precisa durar para notificar; padrão 10) |
-| `[status]` | `context` (branch do git, versão do Go/Node e duração do último comando na barra de status) |
+| `[status]` | `context` (branch do git com os arquivos alterados e duração do último comando na barra de status) |
 | `[shell]` | `program`, `[shell.env]` |
 | `[colors]` | `background`, `foreground`, `muted`, `accent`, `error`, `border`, `cursor` |
 | `[colors.normal]` / `[colors.bright]` | `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white` |
@@ -256,7 +256,9 @@ internal/
     histsearch.go        busca no histórico (Ctrl+R)
     find.go              busca na saída (Cmd+F)
     links.go             URLs e caminhos clicáveis
-    statuscontext.go     branch do git e versão do projeto na barra de status
+    statuscontext.go     leitura do git status em segundo plano
+    gitbadge.go          branch e mudanças do git na barra de status
+    gitlogo.go           logo do Git desenhado a partir do SVG oficial
   config/                arquivo TOML: padrões (default.toml), validação e watcher
   fonts/                 resolução da fonte por nome ou arquivo, com variantes
   jobs/                  jobs em execução ou finalizados, cada um com sua saída

@@ -546,12 +546,13 @@ func (g *Game) drawStatus(dst *ebiten.Image, left, y, right float64, now time.Ti
 		title := fmt.Sprintf("job %d · %s", g.viewing.ID, g.viewing.Command)
 		g.drawText(dst, truncate(title, titleCols), left, y, g.theme.Muted, 1)
 	} else {
-		g.drawPath(dst, left, y, titleCols, now)
-		// The project's context follows the path, if there's room.
-		pathCols := utf8.RuneCountInString(truncate(string(g.path.to), titleCols))
-		if ctx := g.contextText(); ctx != "" && titleCols-pathCols-3 >= 8 {
-			g.drawText(dst, truncate(ctx, titleCols-pathCols-3), left+float64(pathCols+3)*f.cellW, y, g.theme.Muted, 1)
-		}
+		// The project's context follows the path; a long path gives way to
+		// it, down to a readable minimum.
+		const minPath = 16
+		pathMax := min(titleCols, max(minPath, titleCols-g.contextCols()-3))
+		g.drawPath(dst, left, y, pathMax, now)
+		pathCols := utf8.RuneCountInString(truncate(string(g.path.to), pathMax))
+		g.drawContext(dst, left+float64(pathCols+3)*f.cellW, y, left+float64(titleCols)*f.cellW)
 	}
 	if hint == "" {
 		return

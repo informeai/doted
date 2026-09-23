@@ -1,12 +1,11 @@
 package app
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,9 +13,8 @@ import (
 )
 
 // The status line shows, after the directory, what you're working on: the
-// git branch (with * when there are changes), the project's Go or Node
-// version, and how long the last command took. Looking these up runs git
-// and node, so it happens in the background: when the directory changes,
+// git branch with how many files changed, and how long the last command
+// took. Looking the branch up runs git, so it happens in the background: when the directory changes,
 // after each command, and every so often in case something else changed
 // the repository.
 
@@ -27,10 +25,15 @@ const (
 
 // projectContext is what was found about a directory.
 type projectContext struct {
-	dir    string
-	branch string
-	dirty  bool
-	lang   string // "go 1.26", "node 22.3.0"
+	dir           string
+	branch        string
+	ahead, behind int // commits not yet pushed, and not yet pulled
+	changes       gitChanges
+}
+
+// gitChanges counts the files git status lists, by kind.
+type gitChanges struct {
+	modified, added, deleted, untracked, conflicts int
 }
 
 // contextProbe looks up a directory's context; probeContext by default.
@@ -75,33 +78,22 @@ func (g *Game) watchContext(now time.Time) {
 	go func() { c.results <- probe(dir, path) }()
 }
 
-// contextText is the context for the status line.
-func (g *Game) contextText() string {
-	var parts []string
-	if !g.cfg.Status.Context {
-		return ""
-	}
+// currentContext is what's known about the working directory, if anything.
+func (g *Game) currentContext() (projectContext, bool) {
 	info := g.context.info
-	if info.dir == g.session.Dir() {
-		if info.branch != "" {
-			b := "git " + info.branch
-			if info.dirty {
-				b += "*"
-			}
-			parts = append(parts, b)
-		}
-		if info.lang != "" {
-			parts = append(parts, info.lang)
-		}
-	}
-	if g.lastDuration > 0 {
-		parts = append(parts, "last "+formatDuration(g.lastDuration))
-	}
-	return strings.Join(parts, " · ")
+	return info, g.cfg.Status.Context && info.dir == g.session.Dir()
 }
 
-// probeContext looks up dir's git branch and project language, running git
-// and node from pathEnv.
+// contextText is the context after the git part: the last command's
+// duration.
+func (g *Game) contextText() string {
+	if !g.cfg.Status.Context || g.lastDuration <= 0 {
+		return ""
+	}
+	return "last " + formatDuration(g.lastDuration)
+}
+
+// probeContext looks up dir's git branch, running git from pathEnv.
 func probeContext(dir, pathEnv string) projectContext {
 	info := projectContext{dir: dir}
 	run := func(name string, args ...string) (string, bool) {
@@ -118,28 +110,18 @@ func probeContext(dir, pathEnv string) projectContext {
 		return string(out), err == nil
 	}
 	if out, ok := run("git", "status", "--porcelain=v1", "--branch"); ok {
-		info.branch, info.dirty = parseGitStatus(out)
-	}
-	switch root, kind := findProject(dir); kind {
-	case "go":
-		if v := goModVersion(filepath.Join(root, "go.mod")); v != "" {
-			info.lang = "go " + v
-		}
-	case "node":
-		if out, ok := run("node", "--version"); ok {
-			info.lang = "node " + strings.TrimPrefix(strings.TrimSpace(out), "v")
-		}
+		info.branch, info.ahead, info.behind, info.changes = parseGitStatus(out)
 	}
 	return info
 }
 
-// parseGitStatus reads the branch and whether anything changed from the
-// output of git status --porcelain=v1 --branch.
-func parseGitStatus(out string) (branch string, dirty bool) {
-	first, rest, _ := strings.Cut(out, "\n")
-	head, ok := strings.CutPrefix(first, "## ")
+// parseGitStatus reads the branch, how far it is from its upstream and the
+// changed files from the output of git status --porcelain=v1 --branch.
+func parseGitStatus(out string) (branch string, ahead, behind int, changes gitChanges) {
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	head, ok := strings.CutPrefix(lines[0], "## ")
 	if !ok {
-		return "", false
+		return "", 0, 0, gitChanges{}
 	}
 	switch {
 	case strings.HasPrefix(head, "No commits yet on "):
@@ -147,48 +129,38 @@ func parseGitStatus(out string) (branch string, dirty bool) {
 	case strings.HasPrefix(head, "HEAD (no branch)"):
 		branch = "detached"
 	default:
-		branch, _, _ = strings.Cut(head, "...")
-		branch, _, _ = strings.Cut(branch, " ")
-	}
-	return branch, strings.TrimSpace(rest) != ""
-}
-
-// findProject walks up from dir to the nearest go.mod or package.json, not
-// past the home directory.
-func findProject(dir string) (root, kind string) {
-	home, _ := os.UserHomeDir()
-	for d := dir; ; d = filepath.Dir(d) {
-		if exists(filepath.Join(d, "go.mod")) {
-			return d, "go"
-		}
-		if exists(filepath.Join(d, "package.json")) {
-			return d, "node"
-		}
-		if d == home || filepath.Dir(d) == d {
-			return "", ""
+		name, rest, _ := strings.Cut(head, " ")
+		branch, _, _ = strings.Cut(name, "...")
+		// "[ahead 2, behind 1]"
+		rest = strings.Trim(rest, "[]")
+		for _, part := range strings.Split(rest, ", ") {
+			if n, ok := strings.CutPrefix(part, "ahead "); ok {
+				ahead, _ = strconv.Atoi(n)
+			}
+			if n, ok := strings.CutPrefix(part, "behind "); ok {
+				behind, _ = strconv.Atoi(n)
+			}
 		}
 	}
-}
-
-// goModVersion is the go directive of a go.mod: "1.26" for "go 1.26.5".
-func goModVersion(path string) string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	s := bufio.NewScanner(bytes.NewReader(data))
-	for s.Scan() {
-		if v, ok := strings.CutPrefix(strings.TrimSpace(s.Text()), "go "); ok {
-			parts := strings.SplitN(strings.TrimSpace(v), ".", 3)
-			return strings.Join(parts[:min(2, len(parts))], ".")
+	for _, l := range lines[1:] {
+		if len(l) < 2 {
+			continue
+		}
+		x, y := l[0], l[1]
+		switch {
+		case x == '?' && y == '?':
+			changes.untracked++
+		case x == 'U' || y == 'U' || x == 'A' && y == 'A' || x == 'D' && y == 'D':
+			changes.conflicts++
+		case x == 'A':
+			changes.added++
+		case x == 'D' || y == 'D':
+			changes.deleted++
+		default: // M, R, C, T on either side
+			changes.modified++
 		}
 	}
-	return ""
-}
-
-func exists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
+	return branch, ahead, behind, changes
 }
 
 // lookIn finds the program name in the directories of pathEnv.

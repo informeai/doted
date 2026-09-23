@@ -79,8 +79,9 @@ enabled = true
 after_seconds = 10
 
 [status]
-# Show the git branch (with * when there are changes), the project's Go or
-# Node version and how long the last command took in the status line.
+# Show the git branch with what changed (~modified +added -deleted
+# ?untracked !conflicts ↑ahead ↓behind) and how long the last command took
+# in the status line.
 context = true
 
 [shell]
