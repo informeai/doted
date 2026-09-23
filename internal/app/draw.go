@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"image/color"
 	"math"
 	"os"
@@ -84,7 +85,20 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	outputBottom := upperRule - gap
 	g.outputRows = max(1, int((outputBottom-pad)/f.lineH))
 
-	g.drawOutput(screen, pad, outputBottom, now)
+	sb, jobCursor := g.scrollback, -1
+	switch {
+	case g.viewing != nil:
+		sb = g.viewing.Output
+		if g.viewing.Running() {
+			jobCursor = g.viewing.Col()
+		}
+	case g.attached != nil:
+		jobCursor = g.parser.Col()
+	}
+	g.drawScrollback(screen, sb, jobCursor, pad, outputBottom, now)
+	if g.panel.open {
+		g.drawPanel(screen, pad, w-pad, upperRule-gap, now)
+	}
 
 	rule := func(y float64) {
 		vector.StrokeLine(screen, float32(pad), float32(y), float32(w-pad), float32(y), float32(g.scale), g.theme.Border, false)
@@ -93,10 +107,19 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	rule(lowerRule)
 
 	promptW := f.cellW * float64(promptLen)
-	if g.runner.Running() {
-		// Keys go to the program; its cursor is drawn in the output instead.
+	// While a job has the keyboard, its cursor is drawn in the output instead.
+	var inputHint string
+	switch {
+	case g.viewing != nil && g.viewing.Running():
+		inputHint = fmt.Sprintf("input is sent to job %d · ctrl+b to go back", g.viewing.ID)
+	case g.viewing != nil:
+		inputHint = fmt.Sprintf("job %d has finished · esc to go back", g.viewing.ID)
+	case g.attached != nil:
+		inputHint = "input is sent to the running command · ctrl+b to background"
+	}
+	if inputHint != "" {
 		g.drawText(screen, prompt, pad, inputTop, g.theme.Muted, 1)
-		g.drawText(screen, "input is sent to the running command", pad+promptW, inputTop, g.theme.Muted, dimAlpha)
+		g.drawText(screen, truncate(inputHint, g.cols-promptLen), pad+promptW, inputTop, g.theme.Muted, dimAlpha)
 	} else {
 		for i, row := range inputRows {
 			y := inputTop + float64(i)*f.lineH
@@ -124,22 +147,21 @@ func (g *Game) inputLayout() (rows [][]rune, cursorRow, cursorCol int) {
 	return rows, cursorRow, cursorCol
 }
 
-// drawOutput paints the scrollback from the newest line upwards, so the most
-// recent output always hugs the input box. While a command runs, its cursor
-// is drawn on the newest (live) line.
-func (g *Game) drawOutput(dst *ebiten.Image, top, bottom float64, now time.Time) {
+// drawScrollback paints sb from the newest line upwards, so the most recent
+// output always hugs the input box. A cursorCol >= 0 draws a running job's
+// cursor at that column of the newest line.
+func (g *Game) drawScrollback(dst *ebiten.Image, sb *terminal.Scrollback, cursorCol int, top, bottom float64, now time.Time) {
 	f := g.faces
 	pad := g.cfg.Window.Padding * g.scale
 	y := bottom
 	skip := g.scroll
-	last := g.scrollback.Len() - 1
+	last := sb.Len() - 1
 	for i := last; i >= 0 && y-f.lineH >= top; i-- {
-		line := g.scrollback.At(i)
+		line := sb.At(i)
 		rows := terminal.Wrap(line.Cells, g.cols)
 		curRow, curCol := -1, 0
-		if i == last && g.runner.Running() {
-			col := g.parser.Col()
-			curRow, curCol = col/g.cols, col%g.cols
+		if i == last && cursorCol >= 0 {
+			curRow, curCol = cursorCol/g.cols, cursorCol%g.cols
 			for len(rows) <= curRow {
 				rows = append(rows, nil)
 			}
@@ -242,23 +264,102 @@ func (g *Game) drawCursor(dst *ebiten.Image, x, y float64, under rune, now time.
 
 func (g *Game) drawStatus(dst *ebiten.Image, left, y, right float64, now time.Time) {
 	f := g.faces
-	g.drawText(dst, shortPath(g.runner.Dir()), left, y, g.theme.Muted, 1)
+	title := shortPath(g.session.Dir())
+	if g.viewing != nil {
+		title = fmt.Sprintf("job %d · %s", g.viewing.ID, g.viewing.Command)
+	}
 
 	var hint string
+	spinner := false
 	switch {
 	case g.scroll > 0:
 		hint = "scrolled up · pgdn to return"
-	case g.parser.AltScreen:
+	case g.attached != nil && g.parser.AltScreen, g.viewing != nil && g.viewing.AltScreen():
 		hint = "full-screen programs aren't supported yet · ctrl+c"
-	case g.runner.Running():
-		hint = "running · ctrl+c to interrupt"
+	case g.viewing != nil && g.viewing.Running():
+		hint, spinner = "running "+formatElapsed(g.viewing.Elapsed(now)), true
+	case g.viewing != nil:
+		hint = jobResult(g.viewing) + " after " + formatElapsed(g.viewing.Elapsed(now))
+	case g.attached != nil:
+		hint, spinner = "running · ctrl+b background · ctrl+c interrupt", true
 	default:
+		if n := g.jobs.RunningInBackground(); n > 0 {
+			hint, spinner = fmt.Sprintf("%d background %s · ctrl+t", n, plural(n, "job", "jobs")), true
+		} else if len(g.jobs.Listed()) > 0 {
+			hint = "ctrl+t for jobs"
+		}
+	}
+
+	hintLen := utf8.RuneCountInString(hint)
+	reserved := hintLen
+	if spinner {
+		reserved += 4
+	}
+	g.drawText(dst, truncate(title, g.cols-reserved-2), left, y, g.theme.Muted, 1)
+	if hint == "" {
 		return
 	}
-	x := right - f.cellW*float64(utf8.RuneCountInString(hint))
+	x := right - f.cellW*float64(hintLen)
 	g.drawText(dst, hint, x, y, g.theme.Muted, 1)
-	if g.runner.Running() {
+	if spinner {
 		g.drawSpinner(dst, x-f.cellW*4, y+f.lineH/2, now)
+	}
+}
+
+// drawPanel draws the jobs list as an overlay whose bottom edge is at bottom.
+func (g *Game) drawPanel(dst *ebiten.Image, left, right, bottom float64, now time.Time) {
+	const maxRows = 8
+	f := g.faces
+	listed := g.jobs.Listed()
+	rows := min(max(1, len(listed)), maxRows)
+	inner := f.cellW   // horizontal padding inside the box
+	cols := g.cols - 2 // text columns available inside the box
+	height := float64(rows+1)*f.lineH + f.lineH/2
+	top := bottom - height
+
+	vector.FillRect(dst, float32(left), float32(top), float32(right-left), float32(height), g.theme.Background, false)
+	vector.StrokeRect(dst, float32(left), float32(top), float32(right-left), float32(height), float32(g.scale), g.theme.Border, false)
+
+	x := left + inner
+	y := top + f.lineH/4
+	g.drawText(dst, "jobs", x, y, g.theme.Accent, 1)
+	g.drawText(dst, truncate("↑↓ select · enter open · x kill/remove · esc close", cols-6), x+6*f.cellW, y, g.theme.Muted, 1)
+	y += f.lineH
+
+	if len(listed) == 0 {
+		g.drawText(dst, truncate("no background jobs · end a command with & or press ctrl+b while it runs", cols), x, y, g.theme.Muted, 1)
+		return
+	}
+
+	// Keep the selection visible when there are more jobs than rows.
+	first := max(0, g.panel.selected-rows+1)
+	for i := first; i < min(len(listed), first+rows); i++ {
+		j := listed[i]
+		if i == g.panel.selected {
+			vector.FillRect(dst, float32(left+g.scale), float32(y), float32(right-left-2*g.scale), float32(f.lineH), scaleAlpha(g.theme.Accent, 0.18), false)
+		}
+
+		marker, markerColor := "●", g.theme.Accent
+		state := "running " + formatElapsed(j.Elapsed(now))
+		if !j.Running() {
+			marker, markerColor = "○", g.theme.Muted
+			if j.Status != "" || j.Killed {
+				markerColor = g.theme.Error
+			}
+			state = jobResult(j)
+		}
+
+		// marker, id, command, state, then the last line of output if it fits.
+		const idW, stateW = 4, 16
+		cmdW := min(32, max(8, cols-2-idW-stateW-4))
+		line := fmt.Sprintf("%*d  %-*s  %-*s", idW-1, j.ID, cmdW, truncate(j.Command, cmdW), stateW, truncate(state, stateW))
+		g.drawText(dst, marker, x, y, markerColor, 1)
+		g.drawText(dst, truncate(line, cols-2), x+2*f.cellW, y, g.theme.Foreground, 1)
+		if rest := cols - 2 - utf8.RuneCountInString(line) - 2; rest > 4 {
+			lx := x + float64(2+utf8.RuneCountInString(line)+2)*f.cellW
+			g.drawText(dst, truncate(j.LastLine(), rest), lx, y, g.theme.Muted, dimAlpha)
+		}
+		y += f.lineH
 	}
 }
 
@@ -291,6 +392,40 @@ func (g *Game) drawTextFace(dst *ebiten.Image, face *text.GoTextFace, s string, 
 	op.ColorScale.ScaleWithColor(clr)
 	op.ColorScale.ScaleAlpha(float32(alpha))
 	text.Draw(dst, s, face, op)
+}
+
+// truncate shortens s to at most n runes, marking the cut with an ellipsis.
+func truncate(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	if n == 1 {
+		return "…"
+	}
+	return string(r[:n-1]) + "…"
+}
+
+func formatElapsed(d time.Duration) string {
+	d = d.Round(time.Second)
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
+	default:
+		return fmt.Sprintf("%dh%02dm", int(d.Hours()), int(d.Minutes())%60)
+	}
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 func runeAt(row []rune, col int) rune {

@@ -10,7 +10,7 @@ import (
 
 // wait drains events until the command finishes and returns everything it
 // wrote to the terminal.
-func wait(t *testing.T, r *Runner, timeout time.Duration) (output string, done Event) {
+func wait(t *testing.T, r *Process, timeout time.Duration) (output string, done Event) {
 	t.Helper()
 	var out strings.Builder
 	deadline := time.Now().Add(timeout)
@@ -33,7 +33,7 @@ func wait(t *testing.T, r *Runner, timeout time.Duration) (output string, done E
 }
 
 // waitFor drains output until it contains want.
-func waitFor(t *testing.T, r *Runner, want string) {
+func waitFor(t *testing.T, r *Process, want string) {
 	t.Helper()
 	var out strings.Builder
 	deadline := time.Now().Add(5 * time.Second)
@@ -47,13 +47,19 @@ func waitFor(t *testing.T, r *Runner, want string) {
 	t.Fatalf("never saw %q; output: %q", want, out.String())
 }
 
-func TestRunnerRunsInATerminal(t *testing.T) {
-	r := NewRunner(t.TempDir())
-	if err := r.Start("test -t 0 && test -t 1 && echo is-a-tty; stty size; echo err >&2; printf 'no newline'; exit 3", 100, 30); err != nil {
+func TestProcessRunsInATerminal(t *testing.T) {
+	sess := NewSession(t.TempDir())
+	r, err := sess.Start("test -t 0 && test -t 1 && echo is-a-tty; stty size; echo err >&2; printf 'no newline'; exit 3", 100, 30)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Start("true", 80, 24); err != ErrBusy {
-		t.Fatalf("second Start = %v, want ErrBusy", err)
+	// Processes are independent: a second one runs alongside the first.
+	other, err := sess.Start("echo concurrent", 80, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := wait(t, other, 5*time.Second); !strings.Contains(out, "concurrent") {
+		t.Fatalf("second process printed %q", out)
 	}
 
 	out, done := wait(t, r, 5*time.Second)
@@ -70,9 +76,10 @@ func TestRunnerRunsInATerminal(t *testing.T) {
 	}
 }
 
-func TestRunnerForwardsInput(t *testing.T) {
-	r := NewRunner(t.TempDir())
-	if err := r.Start(`printf 'name? '; read name; echo "hello $name"`, 80, 24); err != nil {
+func TestProcessForwardsInput(t *testing.T) {
+	sess := NewSession(t.TempDir())
+	r, err := sess.Start(`printf 'name? '; read name; echo "hello $name"`, 80, 24)
+	if err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, r, "name? ")
@@ -85,9 +92,10 @@ func TestRunnerForwardsInput(t *testing.T) {
 	}
 }
 
-func TestRunnerCtrlCInterrupts(t *testing.T) {
-	r := NewRunner(t.TempDir())
-	if err := r.Start("echo ready; sleep 30", 80, 24); err != nil {
+func TestProcessCtrlCInterrupts(t *testing.T) {
+	sess := NewSession(t.TempDir())
+	r, err := sess.Start("echo ready; sleep 30", 80, 24)
+	if err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, r, "ready")
@@ -99,9 +107,10 @@ func TestRunnerCtrlCInterrupts(t *testing.T) {
 	}
 }
 
-func TestRunnerResize(t *testing.T) {
-	r := NewRunner(t.TempDir())
-	if err := r.Start(`echo ready; read _; stty size`, 80, 24); err != nil {
+func TestProcessResize(t *testing.T) {
+	sess := NewSession(t.TempDir())
+	r, err := sess.Start(`echo ready; read _; stty size`, 80, 24)
+	if err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, r, "ready")
@@ -114,10 +123,11 @@ func TestRunnerResize(t *testing.T) {
 	}
 }
 
-func TestRunnerBackgroundJobDoesNotHang(t *testing.T) {
-	r := NewRunner(t.TempDir())
+func TestProcessBackgroundJobDoesNotHang(t *testing.T) {
+	sess := NewSession(t.TempDir())
 	// nohup keeps the job alive past SIGHUP, so it holds the terminal open.
-	if err := r.Start("nohup sleep 30 >/dev/null 2>&1 & echo started", 80, 24); err != nil {
+	r, err := sess.Start("nohup sleep 30 >/dev/null 2>&1 & echo started", 80, 24)
+	if err != nil {
 		t.Fatal(err)
 	}
 	start := time.Now()
@@ -130,9 +140,10 @@ func TestRunnerBackgroundJobDoesNotHang(t *testing.T) {
 	}
 }
 
-func TestRunnerKillEndsProcessGroup(t *testing.T) {
-	r := NewRunner(t.TempDir())
-	if err := r.Start("trap '' INT; (sleep 30; echo late) & sleep 30", 80, 24); err != nil {
+func TestProcessKillEndsProcessGroup(t *testing.T) {
+	sess := NewSession(t.TempDir())
+	r, err := sess.Start("trap '' INT; (sleep 30; echo late) & sleep 30", 80, 24)
+	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(50 * time.Millisecond)
@@ -144,14 +155,15 @@ func TestRunnerKillEndsProcessGroup(t *testing.T) {
 
 func TestChdir(t *testing.T) {
 	dir := t.TempDir()
-	r := NewRunner("/")
-	if err := r.Chdir(dir); err != nil {
+	sess := NewSession("/")
+	if err := sess.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Chdir("does-not-exist"); err == nil {
+	if err := sess.Chdir("does-not-exist"); err == nil {
 		t.Fatal("expected error for missing directory")
 	}
-	if err := r.Start("pwd -P", 80, 24); err != nil {
+	r, err := sess.Start("pwd -P", 80, 24)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if out, _ := wait(t, r, 5*time.Second); strings.TrimSpace(out) == "" {
@@ -160,9 +172,10 @@ func TestChdir(t *testing.T) {
 }
 
 func TestConfigureShellAndEnv(t *testing.T) {
-	r := NewRunner(t.TempDir())
-	r.Configure("/bin/sh", map[string]string{"DOTED_TEST": "from-config", "PAGER": "less"})
-	if err := r.Start(`echo "$DOTED_TEST $PAGER"`, 80, 24); err != nil {
+	sess := NewSession(t.TempDir())
+	sess.Configure("/bin/sh", map[string]string{"DOTED_TEST": "from-config", "PAGER": "less"})
+	r, err := sess.Start(`echo "$DOTED_TEST $PAGER"`, 80, 24)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if out, _ := wait(t, r, 5*time.Second); !strings.Contains(out, "from-config less") {

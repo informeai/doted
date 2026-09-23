@@ -3,8 +3,8 @@
 package app
 
 import (
+	"fmt"
 	"os"
-	"strings"
 	"time"
 	"unicode"
 
@@ -13,6 +13,7 @@ import (
 
 	"github.com/informeai/doted/internal/config"
 	"github.com/informeai/doted/internal/fonts"
+	"github.com/informeai/doted/internal/jobs"
 	"github.com/informeai/doted/internal/shell"
 	"github.com/informeai/doted/internal/terminal"
 )
@@ -32,17 +33,26 @@ type Game struct {
 	configPath string
 	reloads    chan reload
 
+	// The main view: typed commands, doted's messages and the output of the
+	// attached job, if any.
 	scrollback *terminal.Scrollback
 	parser     *terminal.Parser
 	editor     terminal.Editor
-	runner     *shell.Runner
+	pending    []notice // messages held while a job writes to the scrollback
+
+	session  *shell.Session
+	jobs     *jobs.Manager
+	attached *jobs.Job // runs in the main view and receives the keyboard
+	viewing  *jobs.Job // shown full screen in the job view
+	panel    panel     // the jobs list
 
 	scroll    int       // visual rows scrolled up from the bottom
 	lastInput time.Time // keeps the cursor solid while typing
 	chars     []rune
 	keyBuf    []byte
-	ptyCols   int // size last sent to the running command's terminal
+	ptyCols   int // terminal size last given to the jobs
 	ptyRows   int
+	quitArmed bool // exit was asked once while jobs were still running
 	quit      bool
 
 	// Set by Layout / Draw, read by Update.
@@ -52,6 +62,11 @@ type Game struct {
 	cols       int
 	outputRows int
 	faces      *faceSet // rebuilt when the font settings or the scale change
+}
+
+type notice struct {
+	kind terminal.Kind
+	text string
 }
 
 // New creates the game with the given settings and keeps them in sync with
@@ -67,12 +82,13 @@ func New(s Settings, configPath string) (*Game, error) {
 		reloads:    make(chan reload, 1),
 		scrollback: sb,
 		parser:     terminal.NewParser(sb),
-		runner:     shell.NewRunner(dir),
+		session:    shell.NewSession(dir),
+		jobs:       jobs.NewManager(s.Config.Scrollback.Lines),
 		scale:      1,
 		cols:       80,
 		outputRows: 24,
 	}
-	g.scrollback.Append(terminal.System, "doted — type a command and press Enter. Ctrl+C interrupts, Ctrl+L clears.", time.Now())
+	g.scrollback.Append(terminal.System, "doted — type a command and press Enter. Ctrl+B sends it to the background, Ctrl+T lists jobs.", time.Now())
 	g.apply(s)
 	g.watchConfig()
 	return g, nil
@@ -86,40 +102,66 @@ func (g *Game) apply(s Settings) {
 	g.family = s.Fonts
 	g.faces = nil
 	g.scrollback.SetLimit(s.Config.Scrollback.Lines)
-	g.runner.Configure(s.Config.Shell.Program, s.Config.Shell.Env)
+	g.jobs.SetScrollback(s.Config.Scrollback.Lines)
+	g.session.Configure(s.Config.Shell.Program, s.Config.Shell.Env)
 	for _, n := range s.Notices {
-		g.scrollback.Append(terminal.System, "config: "+n, time.Now())
+		g.notify(terminal.System, "config: "+n)
 	}
 }
 
 func (g *Game) handleReloads() {
-	if g.runner.Running() {
-		return // the parser owns the newest line; apply once the command ends
-	}
 	select {
 	case r := <-g.reloads:
 		if r.err != nil {
-			g.scrollback.Append(terminal.Error, "config not reloaded: "+r.err.Error(), time.Now())
+			g.notify(terminal.Error, "config not reloaded: "+r.err.Error())
 			return
 		}
 		g.apply(r.settings)
-		g.scrollback.Append(terminal.System, "config reloaded", time.Now())
+		g.notify(terminal.System, "config reloaded")
 	default:
 	}
 }
 
+// notify adds a message to the main view. While a job is attached its parser
+// owns the newest line, so messages wait until it detaches.
+func (g *Game) notify(kind terminal.Kind, text string) {
+	if g.attached != nil {
+		g.pending = append(g.pending, notice{kind, text})
+		return
+	}
+	g.scrollback.Append(kind, text, time.Now())
+}
+
+func (g *Game) flushNotices() {
+	if g.attached != nil {
+		return
+	}
+	for _, n := range g.pending {
+		g.scrollback.Append(n.kind, n.text, time.Now())
+	}
+	g.pending = g.pending[:0]
+}
+
 func (g *Game) Update() error {
 	g.handleReloads()
-	g.runner.Drain(g.handleEvent)
-	if g.runner.Running() {
-		g.forwardKeyboard()
-		g.syncPTYSize()
-	} else {
+	g.jobs.Poll(time.Now(), g.handleJobEvent)
+	g.flushNotices()
+
+	switch {
+	case g.panel.open:
+		g.handlePanelKeys()
+	case g.viewing != nil:
+		g.handleJobViewKeys()
+	case g.attached != nil:
+		g.handleAttachedKeys()
+	default:
 		g.handleKeyboard()
 	}
+	g.syncPTYSize()
 	g.handleScrolling()
+
 	if g.quit {
-		g.runner.Kill()
+		g.jobs.KillAll()
 		return ebiten.Termination
 	}
 	return nil
@@ -133,19 +175,40 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return g.width, g.height
 }
 
-func (g *Game) handleEvent(ev shell.Event) {
-	now := time.Now()
-	if !ev.Done {
-		g.parser.Write(ev.Data, now)
+// handleJobEvent mirrors the attached job's output into the main view and
+// reports background jobs that finish.
+func (g *Game) handleJobEvent(j *jobs.Job, ev shell.Event) {
+	if j == g.attached {
+		if !ev.Done {
+			g.parser.Write(ev.Data, time.Now())
+			return
+		}
+		g.parser.End()
+		g.attached = nil
+		if ev.Status != "" {
+			g.notify(terminal.System, ev.Status)
+		}
+		if !j.Listed {
+			g.jobs.Remove(j) // an ordinary command: nothing to keep around
+		}
 		return
 	}
-	g.parser.End()
-	if ev.Status != "" {
-		g.scrollback.Append(terminal.System, ev.Status, now)
+	if ev.Done && j.Listed {
+		g.notify(terminal.System, fmt.Sprintf("[%d] %s: %s", j.ID, jobResult(j), j.Command))
 	}
 }
 
-// handleKeyboard edits the input line while no command is running.
+func jobResult(j *jobs.Job) string {
+	switch {
+	case j.Killed:
+		return "killed"
+	case j.Status != "":
+		return j.Status
+	}
+	return "done"
+}
+
+// handleKeyboard edits the input line while no job is attached.
 func (g *Game) handleKeyboard() {
 	ctrl := ebiten.IsKeyPressed(ebiten.KeyControl)
 	meta := ebiten.IsKeyPressed(ebiten.KeyMeta) // Cmd on macOS
@@ -172,9 +235,11 @@ func (g *Game) handleKeyboard() {
 		case inpututil.IsKeyJustPressed(ebiten.KeyL):
 			g.scrollback.Clear()
 			g.scroll = 0
+		case inpututil.IsKeyJustPressed(ebiten.KeyT):
+			g.openPanel()
 		case inpututil.IsKeyJustPressed(ebiten.KeyD):
 			if g.editor.Empty() {
-				g.quit = true
+				g.requestQuit()
 			}
 		case repeating(ebiten.KeyU):
 			g.editor.KillToStart()
@@ -231,28 +296,37 @@ func (g *Game) handleKeyboard() {
 	g.touch()
 }
 
-// forwardKeyboard sends keystrokes to the running command's terminal, which
-// takes care of echo, line editing and signals (Ctrl+C, Ctrl+Z...).
-func (g *Game) forwardKeyboard() {
+// handleAttachedKeys sends keystrokes to the attached job, except Ctrl+B,
+// which moves it to the background.
+func (g *Game) handleAttachedKeys() {
+	if ctrlPressed(ebiten.KeyB) {
+		g.background()
+		return
+	}
+	g.forwardKeyboard(g.attached)
+}
+
+// forwardKeyboard sends keystrokes to a job's terminal, which takes care of
+// echo, line editing and signals (Ctrl+C, Ctrl+Z...).
+func (g *Game) forwardKeyboard(j *jobs.Job) {
 	g.chars = ebiten.AppendInputChars(g.chars[:0])
 	g.keyBuf = appendKeyBytes(g.keyBuf[:0], g.chars)
 	if len(g.keyBuf) == 0 {
 		return
 	}
-	if err := g.runner.Write(g.keyBuf); err == nil {
+	if err := j.Write(g.keyBuf); err == nil {
 		g.scroll = 0
 		g.touch()
 	}
 }
 
-// syncPTYSize keeps the command's terminal as large as the output area.
+// syncPTYSize keeps every job's terminal as large as the output area.
 func (g *Game) syncPTYSize() {
 	if g.cols == g.ptyCols && g.outputRows == g.ptyRows {
 		return
 	}
-	if g.runner.Resize(g.cols, g.outputRows) == nil {
-		g.ptyCols, g.ptyRows = g.cols, g.outputRows
-	}
+	g.jobs.Resize(g.cols, g.outputRows)
+	g.ptyCols, g.ptyRows = g.cols, g.outputRows
 }
 
 func (g *Game) handleScrolling() {
@@ -268,45 +342,17 @@ func (g *Game) handleScrolling() {
 }
 
 func (g *Game) scrollBy(rows int) {
-	maxScroll := max(0, g.scrollback.Rows(g.cols)-g.outputRows)
+	maxScroll := max(0, g.visibleScrollback().Rows(g.cols)-g.outputRows)
 	g.scroll = min(max(0, g.scroll+rows), maxScroll)
 }
 
-func (g *Game) submit() {
-	line := g.editor.Submit()
-	g.scroll = 0
-	g.scrollback.Append(terminal.Command, g.cfg.Prompt.Symbol+line, time.Now())
-
-	cmd := strings.TrimSpace(line)
-	if cmd == "" || g.runBuiltin(cmd) {
-		return
+// visibleScrollback is what the output area shows: the viewed job's output
+// or the main view.
+func (g *Game) visibleScrollback() *terminal.Scrollback {
+	if g.viewing != nil {
+		return g.viewing.Output
 	}
-	if err := g.runner.Start(cmd, g.cols, g.outputRows); err != nil {
-		g.scrollback.Append(terminal.Error, err.Error(), time.Now())
-		return
-	}
-	g.ptyCols, g.ptyRows = g.cols, g.outputRows
-	g.parser.Begin()
-}
-
-// runBuiltin handles the commands that must act on doted itself rather than
-// on a child process.
-func (g *Game) runBuiltin(cmd string) bool {
-	name, arg, _ := strings.Cut(cmd, " ")
-	arg = strings.TrimSpace(arg)
-	switch name {
-	case "exit", "quit":
-		g.quit = true
-	case "clear":
-		g.scrollback.Clear()
-	case "cd":
-		if err := g.runner.Chdir(arg); err != nil {
-			g.scrollback.Append(terminal.Error, "cd: "+err.Error(), time.Now())
-		}
-	default:
-		return false
-	}
-	return true
+	return g.scrollback
 }
 
 // abandonLine is Ctrl+C at the prompt: keep what was typed in the scrollback
@@ -318,6 +364,17 @@ func (g *Game) abandonLine() {
 	g.editor.Reset()
 }
 
+// requestQuit exits, asking for confirmation once if background jobs would
+// be killed.
+func (g *Game) requestQuit() {
+	if n := g.jobs.RunningInBackground(); n > 0 && !g.quitArmed {
+		g.quitArmed = true
+		g.notify(terminal.System, fmt.Sprintf("%d background job(s) still running; exit again to kill them", n))
+		return
+	}
+	g.quit = true
+}
+
 func (g *Game) touch() { g.lastInput = time.Now() }
 
 // repeating reports whether key fires this tick: on press, then at the
@@ -325,4 +382,9 @@ func (g *Game) touch() { g.lastInput = time.Now() }
 func repeating(key ebiten.Key) bool {
 	d := inpututil.KeyPressDuration(key)
 	return d == 1 || (d >= repeatDelay && (d-repeatDelay)%repeatInterval == 0)
+}
+
+// ctrlPressed reports Ctrl+key pressed this tick.
+func ctrlPressed(key ebiten.Key) bool {
+	return ebiten.IsKeyPressed(ebiten.KeyControl) && inpututil.IsKeyJustPressed(key)
 }

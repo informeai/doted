@@ -1,4 +1,4 @@
-// Package shell runs the commands typed in doted inside a pseudo-terminal and
+// Package shell runs the commands typed in doted inside pseudo-terminals and
 // streams what they write back to the UI goroutine.
 package shell
 
@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -16,8 +15,6 @@ import (
 	"strings"
 	"time"
 )
-
-var ErrBusy = errors.New("a command is already running")
 
 const (
 	readBufferSize = 32 * 1024
@@ -38,45 +35,36 @@ type Event struct {
 	Killed   bool   // ended by Kill
 }
 
-// Runner executes one command at a time through the user's shell, attached
-// to a PTY so programs see a real terminal. Its methods must be called from a
-// single goroutine (the game loop); only the process plumbing runs in the
-// background.
-type Runner struct {
-	shell  string
-	env    []string // extra variables from the config, applied last
-	dir    string
-	events chan Event
-
-	pty     *os.File
-	cancel  context.CancelFunc
-	running bool
+// Session holds what every command shares: the shell, extra environment and
+// the working directory. It must be used from a single goroutine.
+type Session struct {
+	shell string
+	env   []string // extra variables from the config, applied last
+	dir   string
 }
 
-func NewRunner(dir string) *Runner {
-	r := &Runner{dir: dir, events: make(chan Event, 256)}
-	r.Configure("", nil)
-	return r
+func NewSession(dir string) *Session {
+	s := &Session{dir: dir}
+	s.Configure("", nil)
+	return s
 }
 
 // Configure sets the shell used for the next commands (empty means $SHELL,
 // then /bin/sh) and extra environment variables, which take precedence over
 // doted's own.
-func (r *Runner) Configure(shell string, env map[string]string) {
-	r.shell = cmp.Or(shell, os.Getenv("SHELL"), "/bin/sh")
-	r.env = r.env[:0]
+func (s *Session) Configure(shell string, env map[string]string) {
+	s.shell = cmp.Or(shell, os.Getenv("SHELL"), "/bin/sh")
+	s.env = s.env[:0]
 	for _, k := range slices.Sorted(maps.Keys(env)) {
-		r.env = append(r.env, k+"="+env[k])
+		s.env = append(s.env, k+"="+env[k])
 	}
 }
 
-func (r *Runner) Dir() string { return r.dir }
-
-func (r *Runner) Running() bool { return r.running }
+func (s *Session) Dir() string { return s.dir }
 
 // Chdir implements the `cd` builtin: a child process can't change our
-// working directory, so the runner tracks it and applies it to each command.
-func (r *Runner) Chdir(path string) error {
+// working directory, so the session tracks it and applies it to each command.
+func (s *Session) Chdir(path string) error {
 	home, _ := os.UserHomeDir()
 	switch {
 	case path == "" || path == "~":
@@ -84,7 +72,7 @@ func (r *Runner) Chdir(path string) error {
 	case strings.HasPrefix(path, "~/"):
 		path = filepath.Join(home, path[2:])
 	case !filepath.IsAbs(path):
-		path = filepath.Join(r.dir, path)
+		path = filepath.Join(s.dir, path)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
@@ -93,39 +81,33 @@ func (r *Runner) Chdir(path string) error {
 	if !info.IsDir() {
 		return fmt.Errorf("%s: not a directory", path)
 	}
-	r.dir = filepath.Clean(path)
+	s.dir = filepath.Clean(path)
 	return nil
 }
 
-// Start launches cmdline via `$SHELL -c` on a terminal of cols×rows cells.
-// Output arrives through Drain.
-func (r *Runner) Start(cmdline string, cols, rows int) error {
-	if r.running {
-		return ErrBusy
-	}
-
+// Start launches cmdline via `$SHELL -c` on its own terminal of cols×rows
+// cells. Any number of processes can run at once.
+func (s *Session) Start(cmdline string, cols, rows int) (*Process, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(ctx, r.shell, "-c", cmdline)
-	cmd.Dir = r.dir
+	cmd := exec.CommandContext(ctx, s.shell, "-c", cmdline)
+	cmd.Dir = s.dir
 	// Colors are rendered, but screen-addressing programs are not supported
 	// yet, so keep pagers out of the way.
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor", "CLICOLOR=1", "PAGER=cat", "GIT_PAGER=cat")
-	cmd.Env = append(cmd.Env, r.env...) // later entries win
+	cmd.Env = append(cmd.Env, s.env...) // later entries win
 
 	pty, err := startPTY(cmd, cols, rows)
 	if err != nil {
 		cancel()
-		return err
+		return nil, err
 	}
-	r.running = true
-	r.cancel = cancel
-	r.pty = pty
+	p := &Process{events: make(chan Event, 256), pty: pty, cancel: cancel, running: true}
 
 	go func() {
 		readDone := make(chan struct{})
 		go func() {
 			defer close(readDone)
-			r.pump(pty)
+			p.pump()
 		}()
 
 		err := cmd.Wait()
@@ -142,46 +124,54 @@ func (r *Runner) Start(cmdline string, cols, rows int) error {
 		if err != nil && !killed {
 			ev.Status = err.Error()
 		}
-		r.events <- ev
+		p.events <- ev
 	}()
-	return nil
+	return p, nil
 }
 
-// Write sends input (keystrokes) to the running command's terminal.
-func (r *Runner) Write(p []byte) error {
-	if !r.running {
+// Process is one running command attached to a PTY. Its methods must be
+// called from a single goroutine (the game loop); only the process plumbing
+// runs in the background.
+type Process struct {
+	events  chan Event
+	pty     *os.File
+	cancel  context.CancelFunc
+	running bool
+}
+
+// Running reports whether the command has not finished yet (as far as the
+// events drained so far tell).
+func (p *Process) Running() bool { return p.running }
+
+// Write sends input (keystrokes) to the command's terminal.
+func (p *Process) Write(b []byte) error {
+	if !p.running {
 		return nil
 	}
-	_, err := r.pty.Write(p)
+	_, err := p.pty.Write(b)
 	return err
 }
 
-// Resize tells the running command the terminal is now cols×rows (SIGWINCH).
-func (r *Runner) Resize(cols, rows int) error {
-	if !r.running {
+// Resize tells the command its terminal is now cols×rows (SIGWINCH).
+func (p *Process) Resize(cols, rows int) error {
+	if !p.running {
 		return nil
 	}
-	return setSize(r.pty, cols, rows)
+	return setSize(p.pty, cols, rows)
 }
 
-// Kill terminates the running command and everything it spawned.
-func (r *Runner) Kill() {
-	if r.cancel != nil {
-		r.cancel()
-	}
-}
+// Kill terminates the command and everything it spawned.
+func (p *Process) Kill() { p.cancel() }
 
 // Drain hands pending events to fn without blocking. Call it once per frame.
 // It stops after a bounded number of events so a flood of output can't stall
 // the frame.
-func (r *Runner) Drain(fn func(Event)) {
-	for range cap(r.events) {
+func (p *Process) Drain(fn func(Event)) {
+	for range cap(p.events) {
 		select {
-		case ev := <-r.events:
+		case ev := <-p.events:
 			if ev.Done {
-				r.running = false
-				r.cancel = nil
-				r.pty = nil
+				p.running = false
 			}
 			fn(ev)
 		default:
@@ -190,12 +180,12 @@ func (r *Runner) Drain(fn func(Event)) {
 	}
 }
 
-func (r *Runner) pump(f *os.File) {
+func (p *Process) pump() {
 	buf := make([]byte, readBufferSize)
 	for {
-		n, err := f.Read(buf)
+		n, err := p.pty.Read(buf)
 		if n > 0 {
-			r.events <- Event{Data: bytes.Clone(buf[:n])}
+			p.events <- Event{Data: bytes.Clone(buf[:n])}
 		}
 		if err != nil {
 			return // EOF/EIO once the terminal is closed on the other side

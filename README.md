@@ -44,6 +44,8 @@ Cada comando roda em `$SHELL -c` dentro de um pseudo-terminal, no diretório atu
 | Enter | executa a linha | envia Enter ao programa |
 | ↑ / ↓ | navega no histórico | envia as setas ao programa |
 | Ctrl+C | descarta a linha | interrompe o programa (SIGINT) |
+| Ctrl+B | — | manda o comando para o background |
+| Ctrl+T | abre a lista de jobs | — |
 | Ctrl+L | limpa a tela | envia ao programa |
 | Ctrl+D | sai (com a linha vazia) | envia EOF |
 | Ctrl+A / Ctrl+E | início / fim da linha | envia ao programa |
@@ -56,7 +58,29 @@ No macOS, Cmd+←/→ vai para o início/fim da linha, Cmd+Backspace apaga até 
 
 - `cd [dir]`: muda o diretório usado pelos próximos comandos (aceita `~`)
 - `clear`: limpa a tela
-- `exit` / `quit`: fecha o doted
+- `jobs`: abre a lista de jobs
+- `fg [n]`: abre o job `n` (ou o mais recente); também aceita `fg %n`
+- `exit` / `quit`: fecha o doted. Se houver jobs rodando, pede confirmação (repita o comando para matá-los e sair)
+
+### Jobs em segundo plano
+
+Comandos que prendem o terminal (servidores, watchers, builds longos) podem ir para o background e continuar rodando enquanto você usa o prompt:
+
+- **Ctrl+B** com um comando rodando: ele vai para o background e o prompt fica livre.
+- **`comando &`**: inicia o comando direto no background (`&&` continua funcionando normalmente).
+
+Cada job guarda a própria saída desde o início, inclusive o que imprimiu enquanto estava em background. Quando um job termina, uma mensagem aparece na tela principal, e a barra de status mostra quantos jobs estão rodando.
+
+**Lista de jobs** (Ctrl+T ou `jobs`): mostra cada job com status, tempo e a última linha de saída.
+
+| Tecla | Ação |
+| --- | --- |
+| ↑ / ↓ | seleciona |
+| Enter | abre o job |
+| x | mata o job (se estiver rodando) ou remove da lista (se já terminou) |
+| Esc / Ctrl+T | fecha a lista |
+
+**Visão do job**: mostra a saída completa do job, e o teclado vai para ele enquanto estiver rodando. Ctrl+B volta para a tela principal sem parar o job; quando o job já terminou, Esc, Enter ou `q` também voltam. Ctrl+T abre a lista para trocar de job.
 
 ## Configuração
 
@@ -134,9 +158,12 @@ internal/
     keys.go              tradução de teclas para bytes de terminal
     settings.go          configuração + fontes, e recarga ao salvar o arquivo
     theme.go             cores e paleta ANSI/256 cores
+    commands.go          envio da linha e comandos internos (cd, jobs, fg...)
+    jobs.go              background, lista de jobs e visão do job
   config/                arquivo TOML: padrões (default.toml), validação e watcher
   fonts/                 resolução da fonte por nome ou arquivo, com variantes
-  shell/                 execução de comandos em PTY (entrada, saída, resize, kill)
+  jobs/                  jobs em execução ou finalizados, cada um com sua saída
+  shell/                 sessão (shell, ambiente, diretório) e processos em PTY
   terminal/              modelo sem dependência de UI
     parser.go            interpretação da saída do programa (texto, SGR, CR/BS, erase)
     scrollback.go        histórico de linhas exibido acima da entrada
@@ -151,10 +178,16 @@ O pacote `terminal` não depende do Ebitengine, o que facilita testá-lo isolada
 go test -race ./...
 ```
 
+Há também um teste de renderização que abre uma janela e passa pelo fluxo completo (comando anexado, background, lista de jobs, visão do job), executando o `Draw` de verdade:
+
+```sh
+go test -tags smoke ./internal/app/
+```
+
 ## Limitações atuais
 
 - Programas de tela cheia (`vim`, `top`, `less`, `htop`) ainda não são emulados. Quando um deles entra na tela alternativa, a barra de status avisa. Por isso `PAGER` e `GIT_PAGER` são definidos como `cat`.
 - O cursor só se move dentro da linha atual; sequências que movem o cursor para outras linhas são ignoradas.
-- Um comando por vez, sem controle de jobs.
+- Jobs em background não são pausados (não há Ctrl+Z/SIGTSTP): eles continuam rodando.
 - Sem colar da área de transferência (o Ebitengine não expõe clipboard).
 - Caracteres largos (CJK, emoji) desalinham a grade, e a fonte Go Mono tem cobertura limitada de símbolos.

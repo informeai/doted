@@ -65,17 +65,17 @@ func TestReloadErrorKeepsCurrentSettings(t *testing.T) {
 	}
 }
 
-func TestReloadWaitsForRunningCommand(t *testing.T) {
+func TestReloadNoticeWaitsForAttachedJob(t *testing.T) {
 	g := newTestGame(t)
-	if err := g.runner.Start("read _", 80, 24); err != nil {
-		t.Fatal(err)
-	}
-	g.parser.Begin()
-	defer g.runner.Kill()
+	run(g, "read _")
+	defer g.jobs.KillAll()
 
 	g.reloads <- reload{settings: DefaultSettings()}
 	g.handleReloads()
-	if len(g.reloads) != 1 {
-		t.Fatal("reload applied while a command was running")
+	if got := lastLine(g); strings.Contains(got, "config reloaded") {
+		t.Fatal("notice written into the attached job's output")
+	}
+	if len(g.pending) != 1 {
+		t.Fatalf("pending = %v", g.pending)
 	}
 }
