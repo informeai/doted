@@ -3,6 +3,8 @@
 package shell
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -180,5 +182,33 @@ func TestConfigureShellAndEnv(t *testing.T) {
 	}
 	if out, _ := wait(t, r, 5*time.Second); !strings.Contains(out, "from-config less") {
 		t.Fatalf("output %q: config env should be set and override doted's defaults", out)
+	}
+}
+
+func TestImportLoginEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	// A "login shell" whose profile prints noise and exports a variable.
+	fake := filepath.Join(dir, "fakesh")
+	script := "#!/bin/sh\necho 'welcome banner'\nexport FROM_PROFILE='yes=really'\nexec /bin/sh \"$@\"\n"
+	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	sess := NewSession(dir)
+	sess.Configure(fake, nil)
+	if err := sess.ImportLoginEnvironment(5 * time.Second); err != nil {
+		t.Fatal(err)
+	}
+	r, err := sess.Start(`echo "[$FROM_PROFILE]"`, 80, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := wait(t, r, 5*time.Second); !strings.Contains(out, "[yes=really]") {
+		t.Fatalf("output %q: profile variable not imported", out)
+	}
+
+	sess.Configure("/nonexistent/shell", nil)
+	if err := sess.ImportLoginEnvironment(time.Second); err == nil {
+		t.Fatal("expected an error for a missing shell")
 	}
 }

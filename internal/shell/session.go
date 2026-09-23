@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -39,14 +40,50 @@ type Event struct {
 // the working directory. It must be used from a single goroutine.
 type Session struct {
 	shell string
+	base  []string // environment commands start from
 	env   []string // extra variables from the config, applied last
 	dir   string
 }
 
 func NewSession(dir string) *Session {
-	s := &Session{dir: dir}
+	s := &Session{dir: dir, base: os.Environ()}
 	s.Configure("", nil)
 	return s
+}
+
+// loginEnvMarker separates whatever the user's profile prints from the
+// environment dump that follows it.
+const loginEnvMarker = "__DOTED_LOGIN_ENV__"
+
+// ImportLoginEnvironment makes commands start from the environment a login
+// shell sets up. Apps opened from the desktop (Finder, a launcher) inherit a
+// minimal environment without the user's PATH, so commands like `go` or
+// `brew` would not be found otherwise.
+func (s *Session) ImportLoginEnvironment(timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, s.shell, "-l", "-c", "printf '\\n"+loginEnvMarker+"\\n'; env -0")
+	// A daemon started by the profile may inherit stdout and keep it open.
+	cmd.WaitDelay = time.Second
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("reading the login environment: %w", err)
+	}
+	_, dump, ok := strings.Cut(string(out), loginEnvMarker+"\n")
+	if !ok {
+		return errors.New("reading the login environment: unexpected output")
+	}
+	var env []string
+	for kv := range strings.SplitSeq(dump, "\x00") {
+		if k, _, ok := strings.Cut(kv, "="); ok && k != "" {
+			env = append(env, kv)
+		}
+	}
+	if len(env) == 0 {
+		return errors.New("reading the login environment: it is empty")
+	}
+	s.base = env
+	return nil
 }
 
 // Configure sets the shell used for the next commands (empty means $SHELL,
@@ -93,7 +130,7 @@ func (s *Session) Start(cmdline string, cols, rows int) (*Process, error) {
 	cmd.Dir = s.dir
 	// Colors are rendered, but screen-addressing programs are not supported
 	// yet, so keep pagers out of the way.
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor", "CLICOLOR=1", "PAGER=cat", "GIT_PAGER=cat")
+	cmd.Env = append(slices.Clone(s.base), "TERM=xterm-256color", "COLORTERM=truecolor", "CLICOLOR=1", "PAGER=cat", "GIT_PAGER=cat")
 	cmd.Env = append(cmd.Env, s.env...) // later entries win
 
 	pty, err := startPTY(cmd, cols, rows)

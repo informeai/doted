@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=doted
+GenericName=Terminal
+Comment=Terminal emulator with background jobs
+Exec=doted
+Icon=utilities-terminal
+Terminal=false
+Categories=System;TerminalEmulator;
+Keywords=terminal;shell;prompt;command;commandline;

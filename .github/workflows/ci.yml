@@ -1,0 +1,166 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test -race ./...
+
+  # Packages are versioned from the tag (v1.2.3 -> 1.2.3); other builds get
+  # 0.0.<run number>, which every package format accepts.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - id: version
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            if ! [[ "$version" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,5}$ ]]; then
+              echo "::error::Tags must look like v1.2.3 (MSI versions are numeric), got $GITHUB_REF_NAME"
+              exit 1
+            fi
+          else
+            version="0.0.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Version: $version"
+
+  macos:
+    name: macOS (.dmg)
+    needs: [test, version]
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build universal app and dmg
+        run: packaging/macos/build-dmg.sh "$VERSION" dist
+      - name: Check the dmg
+        run: |
+          mount=$(hdiutil attach -nobrowse -readonly dist/*.dmg | tail -1 | cut -f3)
+          app="$mount/doted.app"
+          lipo -archs "$app/Contents/MacOS/doted"
+          codesign --verify --verbose "$app"
+          "$app/Contents/MacOS/doted" -version | grep -F "$VERSION"
+          hdiutil detach "$mount"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: doted-macos
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  linux:
+    name: Linux (.deb)
+    needs: [test, version]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build deb
+        run: packaging/linux/build-deb.sh "$VERSION" dist amd64
+      - name: Install the deb and run doted on a virtual display
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb ./dist/*.deb
+          dpkg -s doted | grep -E '^(Version|Depends):'
+          doted -version | grep -F "$VERSION"
+          # doted keeps running until closed: timeout's exit code 124 means
+          # it started and was still up after 5 seconds.
+          set +e
+          timeout 5 xvfb-run -a doted
+          status=$?
+          set -e
+          if [[ $status -ne 124 ]]; then
+            echo "::error::doted exited with status $status instead of running"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: doted-linux
+          path: dist/*.deb
+          if-no-files-found: error
+
+  windows:
+    name: Windows (.msi)
+    needs: [test, version]
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # WiX 5 is the last release under the MS-RL license alone; 6 and later
+      # add the Open Source Maintenance Fee.
+      - name: Install WiX Toolset
+        run: dotnet tool install --global wix --version 5.0.2
+      - name: Build msi
+        shell: pwsh
+        run: packaging/windows/build-msi.ps1 -Version $env:VERSION -OutDir dist
+      - name: Install the msi
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem dist/*.msi).FullName
+          $p = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /l*v install.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 50; throw "msiexec exited with $($p.ExitCode)" }
+          $exe = "$env:ProgramFiles\doted\doted.exe"
+          if (-not (Test-Path $exe)) { throw "$exe was not installed" }
+          $shortcut = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\doted.lnk"
+          if (-not (Test-Path $shortcut)) { throw "Start menu shortcut missing" }
+          Write-Output "Installed $exe"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: doted-windows
+          path: dist/*.msi
+          if-no-files-found: error
+
+  release:
+    name: Release
+    if: github.ref_type == 'tag'
+    needs: [macos, linux, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "doted $GITHUB_REF_NAME" --generate-notes

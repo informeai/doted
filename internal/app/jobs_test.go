@@ -159,3 +159,18 @@ func TestCutBackground(t *testing.T) {
 		}
 	}
 }
+
+func TestReloadNoticeWaitsForAttachedJob(t *testing.T) {
+	g := newTestGame(t)
+	run(g, "read _")
+	defer g.jobs.KillAll()
+
+	g.reloads <- reload{settings: DefaultSettings()}
+	g.handleReloads()
+	if got := lastLine(g); strings.Contains(got, "config reloaded") {
+		t.Fatal("notice written into the attached job's output")
+	}
+	if len(g.pending) != 1 {
+		t.Fatalf("pending = %v", g.pending)
+	}
+}

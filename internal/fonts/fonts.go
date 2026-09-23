@@ -103,7 +103,7 @@ func isPath(spec string) bool {
 	case ".ttf", ".otf", ".ttc", ".otc":
 		return true
 	}
-	return strings.ContainsRune(spec, filepath.Separator) || strings.HasPrefix(spec, "~")
+	return strings.ContainsAny(spec, `/`+string(filepath.Separator)) || strings.HasPrefix(spec, "~")
 }
 
 func expandHome(p string) string {

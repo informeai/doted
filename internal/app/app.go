@@ -5,6 +5,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"time"
 	"unicode"
 
@@ -24,6 +25,8 @@ const (
 	// Key repeat, in ticks (Ebiten runs Update at 60 TPS).
 	repeatDelay    = 24
 	repeatInterval = 3
+
+	loginEnvTimeout = 5 * time.Second
 )
 
 type Game struct {
@@ -76,6 +79,10 @@ func New(s Settings, configPath string) (*Game, error) {
 	if err != nil {
 		return nil, err
 	}
+	desktop := launchedFromDesktop()
+	if home, err := os.UserHomeDir(); err == nil && desktop {
+		dir = home // Finder and launchers start apps in /
+	}
 	sb := terminal.NewScrollback(s.Config.Scrollback.Lines)
 	g := &Game{
 		configPath: configPath,
@@ -90,8 +97,20 @@ func New(s Settings, configPath string) (*Game, error) {
 	}
 	g.scrollback.Append(terminal.System, "doted — type a command and press Enter. Ctrl+B sends it to the background, Ctrl+T lists jobs.", time.Now())
 	g.apply(s)
+	if desktop {
+		if err := g.session.ImportLoginEnvironment(loginEnvTimeout); err != nil {
+			g.notify(terminal.Error, err.Error())
+		}
+	}
 	g.watchConfig()
 	return g, nil
+}
+
+// launchedFromDesktop reports whether doted was opened from Finder or a
+// desktop launcher rather than from another terminal, which always sets TERM.
+// Such apps get a minimal environment and start in /.
+func launchedFromDesktop() bool {
+	return runtime.GOOS != "windows" && os.Getenv("TERM") == ""
 }
 
 // apply switches to new settings; everything but the window size takes

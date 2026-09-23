@@ -12,10 +12,19 @@ import (
 	"github.com/informeai/doted/internal/config"
 )
 
+// version is set at build time with -ldflags "-X main.version=1.2.3".
+var version = "dev"
+
 func main() {
 	configPath := flag.String("config", config.Path(), "path to the configuration file")
 	initConfig := flag.Bool("init-config", false, "write the default configuration to -config and exit")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("doted", version)
+		return
+	}
 
 	if *initConfig {
 		if err := config.WriteDefault(*configPath); err != nil {

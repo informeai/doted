@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  MSI package for doted, built with WiX Toolset 5:
+
+    wix build -arch x64 -d Version=1.2.3 -d BinDir=path\to\bin doted.wxs -o doted.msi
+
+  UpgradeCode must never change: it is how Windows recognizes a newer doted
+  package as an upgrade of an installed one.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="doted"
+           Manufacturer="informeai"
+           Version="$(var.Version)"
+           UpgradeCode="11C826E1-C242-4E1C-AEBA-5402628FCBC0"
+           Compressed="yes">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of doted is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="doted">
+        <Component Id="Executable">
+          <File Id="DotedExe" Source="$(var.BinDir)\doted.exe" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut">
+        <Shortcut Id="DotedShortcut"
+                  Name="doted"
+                  Description="Terminal emulator with background jobs"
+                  Target="[INSTALLFOLDER]doted.exe"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <!-- A shortcut can't be a component's key path; this value is. -->
+        <RegistryValue Root="HKLM" Key="Software\informeai\doted" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <Feature Id="Main">
+      <ComponentRef Id="Executable" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+  </Package>
+</Wix>

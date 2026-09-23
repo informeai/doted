@@ -67,6 +67,7 @@ func (s *smoke) Update() error {
 }
 
 func TestMain(m *testing.M) {
+	os.Setenv("TERM", "xterm-256color") // as if started from a terminal
 	g, err := New(DefaultSettings(), filepath.Join(os.TempDir(), "doted-smoke-config.toml"))
 	if err != nil {
 		panic(err)

@@ -147,10 +147,39 @@ Sobre fontes:
 - `family = "Go Mono"` usa a fonte embutida no binário, que também é o último recurso quando nenhuma outra é encontrada.
 - Se uma fonte pedida pelo nome não for encontrada, o doted usa a Go Mono e avisa. Fontes que não são monoespaçadas também geram aviso.
 
+## Pacotes e CI
+
+O workflow `.github/workflows/ci.yml` roda `go vet` e os testes no Linux, macOS e Windows. Depois disso, gera um pacote para cada sistema:
+
+| Sistema | Pacote | Conteúdo |
+| --- | --- | --- |
+| macOS | `doted-<versão>-macos-universal.dmg` | `doted.app` universal (Apple Silicon + Intel), com atalho para Aplicativos |
+| Linux | `doted_<versão>_amd64.deb` | `/usr/bin/doted` e atalho no menu de aplicativos |
+| Windows | `doted-<versão>-windows-x64.msi` | instala em `Program Files\doted` com atalho no Menu Iniciar |
+
+Cada pacote é instalado e verificado no próprio CI, e fica disponível como artefato da execução. Ao publicar uma tag `v1.2.3`, os três pacotes são anexados a uma release no GitHub. Em builds sem tag, a versão é `0.0.<número da execução>`.
+
+Os scripts também funcionam localmente:
+
+```sh
+packaging/macos/build-dmg.sh 0.1.0 dist            # no macOS
+packaging/linux/build-deb.sh 0.1.0 dist amd64      # precisa de dpkg-deb
+pwsh packaging/windows/build-msi.ps1 -Version 0.1.0 # precisa do WiX 5 (dotnet tool install --global wix --version 5.0.2)
+```
+
+Observações:
+
+- O `.app` usa assinatura ad hoc, sem Apple Developer ID nem notarização. Na primeira abertura, o macOS bloqueia o app: clique com o botão direito em `doted.app` e escolha **Abrir**.
+- Quando aberto pelo Finder ou pelo menu de aplicativos, o doted começa na pasta pessoal e carrega o ambiente do shell de login (PATH do `.zprofile`/`.profile`), como os outros terminais.
+- No Windows o doted instala e abre, mas ainda não executa comandos, porque o suporte a PTY (ConPTY) ainda não foi implementado.
+- O instalador usa o WiX Toolset 5, a última versão apenas sob a licença MS-RL. As versões 6 e posteriores exigem a Open Source Maintenance Fee.
+
 ## Estrutura
 
 ```
 main.go                  flags, carga da configuração e janela do Ebitengine
+.github/workflows/ci.yml testes nos três sistemas, pacotes e release em tags
+packaging/               scripts do .dmg (macos/), .deb (linux/) e .msi (windows/)
 internal/
   app/                   o "jogo" do Ebitengine
     app.go               Update: teclado, rolagem, comandos internos
