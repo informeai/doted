@@ -47,7 +47,7 @@ type Game struct {
 	jobs     *jobs.Manager
 	attached *jobs.Job // runs in the main view and receives the keyboard
 	viewing  *jobs.Job // shown full screen in the job view
-	panel    panel     // the jobs list
+	panel    panel     // the jobs list or the help
 
 	scroll    int       // visual rows scrolled up from the bottom
 	lastInput time.Time // keeps the cursor solid while typing
@@ -95,7 +95,6 @@ func New(s Settings, configPath string) (*Game, error) {
 		cols:       80,
 		outputRows: 24,
 	}
-	g.scrollback.Append(terminal.System, "doted — type a command and press Enter. Ctrl+B sends it to the background, Ctrl+T lists jobs.", time.Now())
 	g.apply(s)
 	if desktop {
 		if err := g.session.ImportLoginEnvironment(loginEnvTimeout); err != nil {
@@ -167,6 +166,8 @@ func (g *Game) Update() error {
 	g.flushNotices()
 
 	switch {
+	case g.panel.open && g.panel.kind == panelHelp:
+		g.handleHelpKeys()
 	case g.panel.open:
 		g.handlePanelKeys()
 	case g.viewing != nil:

@@ -55,8 +55,13 @@ func (s *smoke) Update() error {
 		s.check(!s.viewing.Running() && s.viewing.LastLine() == "line 5", "job 1 running=%v last=%q", s.viewing.Running(), s.viewing.LastLine())
 		s.closeJob()
 		s.scrollBy(100)
+	case 180:
+		run(s.Game, "help")
+		s.check(s.panel.open && s.panel.kind == panelHelp, "help panel not open")
 	case 200:
 		s.check(strings.Contains(mainText(s.Game), "[1] done"), "no completion notice for job 1")
+		s.pickHelp(0)
+		s.check(s.editor.Text() == "cd ", "picking cd from help left %q on the prompt", s.editor.Text())
 		s.jobs.KillAll()
 		return ebiten.Termination
 	}

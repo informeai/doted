@@ -174,3 +174,24 @@ func TestReloadNoticeWaitsForAttachedJob(t *testing.T) {
 		t.Fatalf("pending = %v", g.pending)
 	}
 }
+
+func TestHelpHintOnStatusLine(t *testing.T) {
+	g := newTestGame(t)
+	if g.scrollback.Len() != 0 {
+		t.Fatalf("nothing should be printed at startup, got %q", mainText(g))
+	}
+	if hint, _ := g.statusHint(time.Now()); hint != helpHint {
+		t.Fatalf("status hint at startup = %q", hint)
+	}
+
+	run(g, "read _")
+	defer g.jobs.KillAll()
+	if hint, spinner := g.statusHint(time.Now()); !strings.HasPrefix(hint, "running") || !spinner {
+		t.Fatalf("while running, hint = %q spinner %v", hint, spinner)
+	}
+	g.attached.Write([]byte("\r"))
+	tickUntil(t, g, func() bool { return g.attached == nil })
+	if hint, _ := g.statusHint(time.Now()); hint != helpHint {
+		t.Fatalf("the help hint should be back once idle, got %q", hint)
+	}
+}

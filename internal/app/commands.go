@@ -60,6 +60,8 @@ func (g *Game) runBuiltin(cmd string) bool {
 		}
 	case "jobs":
 		g.openPanel()
+	case "help":
+		g.openHelp()
 	case "fg":
 		g.fg(arg)
 	default:

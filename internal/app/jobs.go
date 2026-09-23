@@ -11,11 +11,20 @@ import (
 	"github.com/informeai/doted/internal/terminal"
 )
 
-// panel is the jobs list overlay.
+// panel is the overlay above the input: the jobs list or the help.
 type panel struct {
 	open     bool
-	selected int // index into jobs.Listed()
+	kind     panelKind
+	selected int // index into jobs.Listed() or helpCommands
+	scroll   int // help: extra lines scrolled past the selection on short windows
 }
+
+type panelKind int
+
+const (
+	panelJobs panelKind = iota
+	panelHelp
+)
 
 // background detaches the attached job: it keeps running and its output keeps
 // going to its own scrollback, while the prompt is free again.
@@ -41,9 +50,8 @@ func (g *Game) closeJob() {
 }
 
 func (g *Game) openPanel() {
-	g.panel.open = true
 	// Start on the newest job, the one most likely wanted.
-	g.panel.selected = max(0, len(g.jobs.Listed())-1)
+	g.panel = panel{open: true, kind: panelJobs, selected: max(0, len(g.jobs.Listed())-1)}
 }
 
 func (g *Game) handleJobViewKeys() {

@@ -56,10 +56,13 @@ No macOS, Cmd+←/→ vai para o início/fim da linha, Cmd+Backspace apaga até 
 
 ### Comandos internos
 
+Digite `help` para ver a lista abaixo e os atalhos dentro do próprio doted (a barra de status lembra disso). Na lista, ↑/↓ seleciona um comando, Enter coloca ele no prompt para você completar e executar, e Esc fecha.
+
 - `cd [dir]`: muda o diretório usado pelos próximos comandos (aceita `~`)
 - `clear`: limpa a tela
 - `jobs`: abre a lista de jobs
 - `fg [n]`: abre o job `n` (ou o mais recente); também aceita `fg %n`
+- `help`: lista os comandos e atalhos
 - `exit` / `quit`: fecha o doted. Se houver jobs rodando, pede confirmação (repita o comando para matá-los e sair)
 
 ### Jobs em segundo plano

@@ -96,8 +96,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		jobCursor = g.parser.Col()
 	}
 	g.drawScrollback(screen, sb, jobCursor, pad, outputBottom, now)
-	if g.panel.open {
-		g.drawPanel(screen, pad, w-pad, upperRule-gap, now)
+	switch {
+	case g.panel.open && g.panel.kind == panelHelp:
+		g.drawHelpPanel(screen, pad, w-pad, upperRule-gap)
+	case g.panel.open:
+		g.drawJobsPanel(screen, pad, w-pad, upperRule-gap, now)
 	}
 
 	rule := func(y float64) {
@@ -269,8 +272,34 @@ func (g *Game) drawStatus(dst *ebiten.Image, left, y, right float64, now time.Ti
 		title = fmt.Sprintf("job %d · %s", g.viewing.ID, g.viewing.Command)
 	}
 
-	var hint string
-	spinner := false
+	hint, spinner := g.statusHint(now)
+
+	// Keep the title readable on narrow windows: the hint gives way first.
+	const minTitle, spinnerCols = 12, 4
+	maxHint := g.cols - minTitle - 2
+	if spinner {
+		maxHint -= spinnerCols
+	}
+	hint = truncate(hint, maxHint)
+	hintLen := utf8.RuneCountInString(hint)
+	reserved := hintLen
+	if spinner {
+		reserved += spinnerCols
+	}
+	g.drawText(dst, truncate(title, g.cols-reserved-2), left, y, g.theme.Muted, 1)
+	if hint == "" {
+		return
+	}
+	x := right - f.cellW*float64(hintLen)
+	g.drawText(dst, hint, x, y, g.theme.Muted, 1)
+	if spinner {
+		g.drawSpinner(dst, x-f.cellW*spinnerCols, y+f.lineH/2, now)
+	}
+}
+
+// statusHint is the right side of the status line: what is going on, and
+// the keys that matter right now.
+func (g *Game) statusHint(now time.Time) (hint string, spinner bool) {
 	switch {
 	case g.scroll > 0:
 		hint = "scrolled up · pgdn to return"
@@ -287,44 +316,21 @@ func (g *Game) drawStatus(dst *ebiten.Image, left, y, right float64, now time.Ti
 			hint, spinner = fmt.Sprintf("%d background %s · ctrl+t", n, plural(n, "job", "jobs")), true
 		} else if len(g.jobs.Listed()) > 0 {
 			hint = "ctrl+t for jobs"
+		} else {
+			hint = helpHint
 		}
 	}
-
-	hintLen := utf8.RuneCountInString(hint)
-	reserved := hintLen
-	if spinner {
-		reserved += 4
-	}
-	g.drawText(dst, truncate(title, g.cols-reserved-2), left, y, g.theme.Muted, 1)
-	if hint == "" {
-		return
-	}
-	x := right - f.cellW*float64(hintLen)
-	g.drawText(dst, hint, x, y, g.theme.Muted, 1)
-	if spinner {
-		g.drawSpinner(dst, x-f.cellW*4, y+f.lineH/2, now)
-	}
+	return hint, spinner
 }
 
-// drawPanel draws the jobs list as an overlay whose bottom edge is at bottom.
-func (g *Game) drawPanel(dst *ebiten.Image, left, right, bottom float64, now time.Time) {
+// drawJobsPanel draws the jobs list as an overlay whose bottom edge is at
+// bottom.
+func (g *Game) drawJobsPanel(dst *ebiten.Image, left, right, bottom float64, now time.Time) {
 	const maxRows = 8
 	f := g.faces
 	listed := g.jobs.Listed()
 	rows := min(max(1, len(listed)), maxRows)
-	inner := f.cellW   // horizontal padding inside the box
-	cols := g.cols - 2 // text columns available inside the box
-	height := float64(rows+1)*f.lineH + f.lineH/2
-	top := bottom - height
-
-	vector.FillRect(dst, float32(left), float32(top), float32(right-left), float32(height), g.theme.Background, false)
-	vector.StrokeRect(dst, float32(left), float32(top), float32(right-left), float32(height), float32(g.scale), g.theme.Border, false)
-
-	x := left + inner
-	y := top + f.lineH/4
-	g.drawText(dst, "jobs", x, y, g.theme.Accent, 1)
-	g.drawText(dst, truncate("↑↓ select · enter open · x kill/remove · esc close", cols-6), x+6*f.cellW, y, g.theme.Muted, 1)
-	y += f.lineH
+	x, y, cols := g.drawPanelFrame(dst, left, right, bottom, rows, "jobs", "↑↓ select · enter open · x kill/remove · esc close")
 
 	if len(listed) == 0 {
 		g.drawText(dst, truncate("no background jobs · end a command with & or press ctrl+b while it runs", cols), x, y, g.theme.Muted, 1)
