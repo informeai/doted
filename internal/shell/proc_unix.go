@@ -55,3 +55,18 @@ func setSize(f *os.File, cols, rows int) error {
 	})
 	return cmp.Or(err, ioctlErr)
 }
+
+// lineMode reports whether the terminal on f's other side reads input a
+// line at a time (canonical mode, with the terminal's own line editing)
+// rather than a key at a time, as full-screen programs and watchers do.
+func lineMode(f *os.File) (canonical, ok bool) {
+	conn, err := f.SyscallConn()
+	if err != nil {
+		return false, false
+	}
+	var t *unix.Termios
+	if conn.Control(func(fd uintptr) { t, err = unix.IoctlGetTermios(int(fd), getTermios) }) != nil || err != nil {
+		return false, false
+	}
+	return t.Lflag&unix.ICANON != 0, true
+}

@@ -35,7 +35,7 @@ type suggestCache struct {
 // suggestion is what to show after the cursor, "" for nothing. It is
 // recomputed only when the line or the directory change.
 func (g *Game) suggestion(now time.Time) string {
-	if !g.editor.AtEnd() || strings.TrimSpace(g.editor.Text()) == "" {
+	if !g.editor.AtEnd() || strings.TrimSpace(g.editor.Text()) == "" || g.target != nil {
 		return ""
 	}
 	line, dir := g.editor.Text(), g.session.Dir()

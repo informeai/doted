@@ -279,3 +279,29 @@ func TestCommands(t *testing.T) {
 		t.Fatalf("Commands() = %v, want alpha, beta and gamma once each", got)
 	}
 }
+
+func TestLineMode(t *testing.T) {
+	s := NewSession(t.TempDir())
+	t.Cleanup(s.Close)
+	p, err := s.Start("stty -icanon; echo raw; read -r _; stty icanon; echo cooked; read -r _", 80, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(p.Kill)
+	waitFor := func(want bool) {
+		t.Helper()
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			p.Drain(func(Event) {})
+			if c, ok := p.LineMode(); ok && c == want {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		c, ok := p.LineMode()
+		t.Fatalf("line mode = %v (ok %v), want %v", c, ok, want)
+	}
+	waitFor(false)
+	p.Write([]byte("x\n"))
+	waitFor(true)
+}

@@ -24,7 +24,9 @@ import (
 // Cards watch the output as it comes. A line that looks like an error turns
 // the card red with a flash, until a line that looks like success (a watcher
 // passing again) clears it; the first local URL a job prints (a dev server)
-// becomes a link on its card. Clicking a card, or Ctrl+1..9, opens the job.
+// becomes a link on its card. Clicking a card, or Ctrl+1..9, opens the job;
+// its actions restart, stop or send to it without opening it (see
+// jobcontrol.go).
 
 const (
 	stripMinCols    = 30 // a card's narrowest width, in cells
@@ -51,6 +53,10 @@ type jobWatch struct {
 	flashAt time.Time
 	url     string
 	shownAt time.Time
+
+	// Driving it from its card; see jobcontrol.go.
+	restarting bool      // it was killed to run again
+	stoppedAt  time.Time // when stop last interrupted it
 }
 
 // isError reports whether an output line looks like an error.
@@ -133,7 +139,18 @@ func (g *Game) stripHeight(now time.Time) float64 {
 		return 0
 	}
 	f := g.faces
-	return float64(1+g.cfg.Jobs.StripLines)*f.lineH + f.lineH/2
+	return float64(1+g.stripLines(now))*f.lineH + f.lineH/2
+}
+
+// stripLines is how many lines of output the strip's cards have room for:
+// more while one of them is being sent to.
+func (g *Game) stripLines(now time.Time) int {
+	for _, j := range g.stripJobs(now) {
+		if j == g.target {
+			return max(g.cfg.Jobs.StripLines, targetLines)
+		}
+	}
+	return g.cfg.Jobs.StripLines
 }
 
 // stripHit is a clickable spot of the strip in the last frame.
@@ -141,14 +158,15 @@ type stripHit struct {
 	x0, y0, x1, y1 float64
 	job            *jobs.Job // opens it; nil for the "+N" card
 	url            string    // opens it instead, when set
+	action         string    // or does this to it: restart, stop, send
 }
 
 func (g *Game) stripHitAt(x, y float64) (stripHit, bool) {
 	for _, h := range g.stripHits {
 		if x >= h.x0 && x < h.x1 && y >= h.y0 && y < h.y1 {
-			// A URL inside a card wins over the card.
+			// A link or an action inside a card wins over the card.
 			for _, u := range g.stripHits {
-				if u.url != "" && x >= u.x0 && x < u.x1 && y >= u.y0 && y < u.y1 {
+				if (u.url != "" || u.action != "") && x >= u.x0 && x < u.x1 && y >= u.y0 && y < u.y1 {
 					return u, true
 				}
 			}
@@ -172,6 +190,12 @@ func (g *Game) handleStripMouse(x, y float64) bool {
 	switch {
 	case h.url != "":
 		g.openLink(link{url: h.url})
+	case h.action == "restart":
+		g.restartJob(h.job)
+	case h.action == "stop":
+		g.stopJob(h.job, time.Now())
+	case h.action == "send":
+		g.enterTarget(h.job)
 	case h.job != nil:
 		g.openJob(h.job)
 	default:
@@ -275,7 +299,7 @@ func (g *Game) drawStrip(dst *ebiten.Image, left, right, y float64, now time.Tim
 		return
 	}
 	f := g.faces
-	lines := g.cfg.Jobs.StripLines
+	lines := g.stripLines(now)
 	h := float64(1+lines)*f.lineH + f.lineH/2
 	cols := int((right - left) / f.cellW)
 	fit := max(2, (cols+stripGapCols)/(stripMinCols+stripGapCols))
@@ -292,8 +316,8 @@ func (g *Game) drawStrip(dst *ebiten.Image, left, right, y float64, now time.Tim
 	}
 	w := avail / float64(len(cards))
 	x := left
-	for i, j := range cards {
-		g.drawCard(dst, j, i+1, x, y, w, h, now)
+	for _, j := range cards {
+		g.drawCard(dst, j, x, y, w, h, now)
 		x += w + gap
 	}
 	if more > 0 {
@@ -305,8 +329,8 @@ func (g *Game) drawStrip(dst *ebiten.Image, left, right, y float64, now time.Tim
 	}
 }
 
-// drawCard draws job j's card, number n, in the box (x, y, w, h).
-func (g *Game) drawCard(dst *ebiten.Image, j *jobs.Job, n int, x, y, w, h float64, now time.Time) {
+// drawCard draws job j's card in the box (x, y, w, h).
+func (g *Game) drawCard(dst *ebiten.Image, j *jobs.Job, x, y, w, h float64, now time.Time) {
 	f := g.faces
 	wt := g.watches[j]
 	if wt == nil {
@@ -341,6 +365,10 @@ func (g *Game) drawCard(dst *ebiten.Image, j *jobs.Job, n int, x, y, w, h float6
 		glow := scaleAlpha(g.theme.Error, alpha*(1-p))
 		strokeRoundRect(dst, x, y, w, h, r, 2*g.scale, glow)
 	}
+	// The card being sent to is outlined in the accent color.
+	if j == g.target {
+		strokeRoundRect(dst, x, y, w, h, r, 1.5*g.scale, scaleAlpha(g.theme.Accent, alpha))
+	}
 	// The state's color runs down the card's left edge.
 	vector.FillRect(dst, float32(x+r/3), float32(y+r), float32(math.Max(2, 2*g.scale)), float32(h-2*r), scaleAlpha(state, alpha), true)
 
@@ -355,42 +383,79 @@ func (g *Game) drawCard(dst *ebiten.Image, j *jobs.Job, n int, x, y, w, h float6
 		dotR *= 0.8 + 0.3*(math.Sin(float64(now.UnixMilli())/1000*2*math.Pi)+1)/2
 	}
 	vector.FillCircle(dst, float32(tx+f.cellW/2), float32(ty+f.lineH/2), float32(dotR), scaleAlpha(state, alpha), true)
-	var right string
+	// On the right: the actions under the mouse, or the URL it serves.
+	type spot struct{ text, action string }
+	var spots []spot
 	switch {
-	case hover && n <= 9:
-		right = fmt.Sprintf("ctrl+%d", n)
+	case hover && j.Running():
+		stop := "stop"
+		if g.stopping(j, now) {
+			stop = "kill"
+		}
+		spots = []spot{{"restart", "restart"}, {stop, "stop"}}
+		if j != g.target {
+			spots = append(spots, spot{"send", "send"})
+		}
+	case hover:
+		spots = []spot{{"restart", "restart"}}
 	case wt.url != "":
-		right = strings.TrimPrefix(strings.TrimPrefix(wt.url, "http://"), "https://")
+		spots = []spot{{strings.TrimPrefix(strings.TrimPrefix(wt.url, "http://"), "https://"), ""}}
 	}
 	nameCols := utf8.RuneCountInString(wt.name)
-	// The right side gets what the name and time leave, if that's enough.
-	rightCols := min(utf8.RuneCountInString(right), cols-2-nameCols-9)
-	if rightCols < 8 {
-		right, rightCols = "", 0
+	rightCols := -2
+	for _, sp := range spots {
+		rightCols += 2 + utf8.RuneCountInString(sp.text)
 	}
-	right = truncate(right, rightCols)
+	// They get what the name leaves; a URL shortens, actions go if they
+	// don't fit.
+	if room := cols - 2 - nameCols - 2; rightCols > room {
+		if len(spots) == 1 && spots[0].action == "" && room >= 8 {
+			spots[0].text = truncate(spots[0].text, room)
+			rightCols = room
+		} else {
+			spots, rightCols = nil, 0
+		}
+	}
 	leftCols := cols - 2
-	if rightCols > 0 {
+	if len(spots) > 0 {
 		leftCols -= rightCols + 1
 	}
 	g.drawText(dst, truncate(wt.name, leftCols), tx+2*f.cellW, ty, g.theme.Foreground, alpha)
 	if rest := leftCols - nameCols; rest > 3 {
 		g.drawText(dst, truncate(" · "+formatElapsed(j.Elapsed(now)), rest), tx+float64(2+nameCols)*f.cellW, ty, g.theme.Muted, alpha)
 	}
-	if right != "" {
-		rx := x + w - pad - float64(rightCols)*f.cellW
+	rx := x + w - pad - float64(max(0, rightCols))*f.cellW
+	for _, sp := range spots {
+		sw := float64(utf8.RuneCountInString(sp.text)) * f.cellW
+		over := float64(mx) >= rx && float64(mx) < rx+sw && float64(my) >= ty && float64(my) < ty+f.lineH
 		clr := g.theme.Muted
-		if wt.url != "" && !hover {
+		switch {
+		case sp.action == "":
+			clr = g.theme.Accent // the URL
+		case over && sp.text == "kill":
+			clr = g.theme.Error
+		case over:
 			clr = g.theme.Accent
-			uy := float32(ty + f.underlineY)
-			vector.StrokeLine(dst, float32(rx), uy, float32(rx+float64(rightCols)*f.cellW), uy, float32(g.scale), scaleAlpha(clr, alpha*0.6), false)
-			g.stripHits = append(g.stripHits, stripHit{x0: rx, y0: ty, x1: rx + float64(rightCols)*f.cellW, y1: ty + f.lineH, url: wt.url})
 		}
-		g.drawText(dst, right, rx, ty, clr, alpha)
+		g.drawText(dst, sp.text, rx, ty, clr, alpha)
+		if sp.action == "" || over {
+			uy := float32(ty + f.underlineY)
+			vector.StrokeLine(dst, float32(rx), uy, float32(rx+sw), uy, float32(g.scale), scaleAlpha(clr, alpha*0.6), false)
+		}
+		hit := stripHit{x0: rx, y0: ty, x1: rx + sw, y1: ty + f.lineH, job: j, action: sp.action}
+		if sp.action == "" {
+			hit.url = wt.url
+		}
+		g.stripHits = append(g.stripHits, hit)
+		rx += sw + 2*f.cellW
 	}
 
 	// The last lines, errors in red.
-	for i, line := range j.Tail(g.cfg.Jobs.StripLines) {
+	shown := g.cfg.Jobs.StripLines
+	if j == g.target {
+		shown = g.stripLines(now) // the one being sent to shows more
+	}
+	for i, line := range j.Tail(shown) {
 		clr, a := g.theme.Foreground, alpha*0.7
 		if isError(line) {
 			clr, a = g.theme.Error, alpha

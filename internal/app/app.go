@@ -96,6 +96,9 @@ type Game struct {
 	linkCache                  linkCache                   // the last link looked up under the mouse
 	watches                    map[*jobs.Job]*jobWatch     // what the job strip read from each job; see strip.go
 	stripHits                  []stripHit                  // the strip's clickable spots in the last frame
+	target                     *jobs.Job                   // the job the input line sends to; see jobcontrol.go
+	targetRaw                  bool                        // it reads a key at a time
+	stash                      string                      // the shell line put aside meanwhile
 	opener                     func(*Game, []string) error // starts the program that opens a link
 	notifier                   func(title, body string)    // shows a desktop notification
 	outTop, outBottom, outLeft float64
@@ -283,6 +286,9 @@ func (g *Game) Update() error {
 		g.handleHistoryKeys()
 	case g.panel.open:
 		g.handlePanelKeys()
+	case altDigit() > 0 && g.sendToCard(altDigit()):
+	case g.target != nil:
+		g.handleTargetKeys()
 	case g.viewing != nil:
 		g.handleJobViewKeys()
 	case g.attached != nil:
@@ -345,6 +351,9 @@ func (g *Game) handleJobEvent(j *jobs.Job, ev shell.Event) {
 		return
 	}
 	if ev.Done && j.Listed {
+		if g.jobRestarted(j) {
+			return // it runs again in its place
+		}
 		// It ended in the background, after newer commands: its state would
 		// undo theirs.
 		g.session.Discard(j.State())

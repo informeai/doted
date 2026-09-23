@@ -138,7 +138,11 @@ Os cartões leem a saída enquanto ela chega:
 - uma linha que parece erro (`error`, `FAIL`, `panic`, `fatal`, `Traceback`) deixa o cartão vermelho, com um brilho que pisca uma vez, e aparece em vermelho no cartão; uma linha de sucesso depois (`ok`, `PASS`, `ready`, `compiled`), como num watcher que volta a passar, desfaz isso;
 - a primeira URL local que o job imprime (`http://localhost:5173/`, típica de servidores de desenvolvimento) vira um link no cartão.
 
-Clicar num cartão, ou Ctrl+1 a Ctrl+9, abre a visão completa do job. Quando não cabem todos, os mais recentes aparecem e os outros ficam num cartão `+N` que abre a lista. Para desligar a faixa ou mudar quantas linhas cada cartão mostra, use `[jobs] strip` e `strip_lines`.
+Clicar num cartão, ou Ctrl+1 a Ctrl+9, abre a visão completa do job. Também dá para controlar o job sem abri-lo. Com o mouse sobre o cartão, aparecem três ações:
+
+- **restart** para o job e, quando ele termina (para um servidor liberar a porta), roda o mesmo comando de novo no mesmo lugar da faixa;
+- **stop** envia Ctrl+C; se o job não parar, o botão vira **kill** por alguns segundos e um segundo clique o mata;
+- **send** (ou Alt+1 a Alt+9) aponta a linha de entrada para o job: o prompt mostra `→ dev ›`, o cartão ganha uma borda na cor de destaque e mais linhas, e o que você digita vai para ele, sem sair da tela principal. Se o job lê uma linha por vez (um `read`, uma pergunta `y/n`, o `rs` do nodemon), você edita a linha no doted e o Enter a envia; se ele lê tecla a tecla (o `r` e o `q` do Vite, o `a` e o `p` do Jest e do Vitest, um REPL), cada tecla vai na hora. O doted descobre sozinho qual é o caso pelo modo do terminal do job. Esc devolve a linha ao shell, com o que você tinha digitado antes; se o job terminar, ela volta sozinha. Quando não cabem todos, os mais recentes aparecem e os outros ficam num cartão `+N` que abre a lista. Para desligar a faixa ou mudar quantas linhas cada cartão mostra, use `[jobs] strip` e `strip_lines`.
 
 **Lista de jobs** (Ctrl+T ou `jobs`): mostra cada job com status, tempo e a última linha de saída.
 
@@ -278,6 +282,7 @@ internal/
     gitanim.go           animações do branch: rolagem, giro do logo, faíscas e fade
     gitdelete.go         animação ao apagar branches e tags
     strip.go             faixa de jobs ao vivo acima da entrada
+    jobcontrol.go        restart, stop e enviar entrada aos jobs pelos cartões
   config/                arquivo TOML: padrões (default.toml), validação e watcher
   fonts/                 resolução da fonte por nome ou arquivo, com variantes
   jobs/                  jobs em execução ou finalizados, cada um com sua saída

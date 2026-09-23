@@ -104,6 +104,14 @@ func (j *Job) State() string { return j.proc.State() }
 
 func (j *Job) Kill() { j.proc.Kill() }
 
+// Interrupt sends Ctrl+C to the job's terminal, which interrupts the program
+// the way pressing it would.
+func (j *Job) Interrupt() { j.Write([]byte{0x03}) }
+
+// LineMode reports whether the job reads its input a line at a time rather
+// than a key at a time; ok is false when that can't be told.
+func (j *Job) LineMode() (canonical, ok bool) { return j.proc.LineMode() }
+
 // Elapsed is how long the job ran, or has been running so far.
 func (j *Job) Elapsed(now time.Time) time.Duration {
 	if j.Ended.IsZero() {
@@ -242,6 +250,17 @@ func (m *Manager) Get(id int) *Job {
 		}
 	}
 	return nil
+}
+
+// Replace puts next, a job just started, in old's place in the list, and
+// forgets old.
+func (m *Manager) Replace(old, next *Job) {
+	m.jobs = slices.DeleteFunc(m.jobs, func(x *Job) bool { return x == next })
+	if i := slices.Index(m.jobs, old); i >= 0 {
+		m.jobs[i] = next
+		return
+	}
+	m.jobs = append(m.jobs, next)
 }
 
 // Remove forgets a finished job.

@@ -219,6 +219,16 @@ func (p *Process) Resize(cols, rows int) error {
 	return setSize(p.pty, cols, rows)
 }
 
+// LineMode reports whether the command reads its input a line at a time,
+// with the terminal's own line editing, rather than a key at a time; ok is
+// false when that can't be told.
+func (p *Process) LineMode() (canonical, ok bool) {
+	if !p.running.Load() {
+		return false, false
+	}
+	return lineMode(p.pty)
+}
+
 // Kill terminates the command and everything it spawned.
 func (p *Process) Kill() { p.cancel() }
 

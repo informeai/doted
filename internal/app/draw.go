@@ -149,6 +149,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// While a job has the keyboard, its cursor is drawn in the output instead.
 	var inputHint string
 	switch {
+	case g.target != nil && g.targetRaw:
+		inputHint = "each key goes to it as you press it · esc returns to the shell"
 	case g.viewing != nil && g.viewing.Running():
 		inputHint = fmt.Sprintf("input is sent to job %d · ctrl+b to go back", g.viewing.ID)
 	case g.viewing != nil:
@@ -158,8 +160,16 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	case g.attached != nil:
 		inputHint = "input is sent to the running command · ctrl+b to background"
 	}
+	// While the line points at a job, its name follows the prompt.
+	drawTarget := func() {
+		if label := g.targetPrompt(); label != "" {
+			base := utf8.RuneCountInString(g.basePrompt())
+			g.drawText(screen, label, pad+float64(base)*f.cellW, inputTop, g.theme.Accent, 1)
+		}
+	}
 	if inputHint != "" {
 		g.drawPrompt(screen, pad, inputTop, g.theme.Muted, 1)
+		drawTarget()
 		g.drawText(screen, truncate(inputHint, g.cols-promptLen), pad+promptW, inputTop, g.theme.Muted, dimAlpha)
 	} else {
 		colorAt := g.inputColors(promptLen, now)
@@ -168,6 +178,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			from := 0
 			if i == 0 {
 				g.drawPrompt(screen, pad, y, g.promptColor(now), 1)
+				drawTarget()
 				from = promptLen
 			}
 			g.drawInputRow(screen, row, from, i*g.cols, pad, y, colorAt)
@@ -195,6 +206,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 // promptText is what the prompt takes up on the line: the symbol, or blank
 // cells where the bar is drawn.
 func (g *Game) promptText() string {
+	return g.basePrompt() + g.targetPrompt()
+}
+
+// basePrompt is the prompt without the job the line may point at.
+func (g *Game) basePrompt() string {
 	if g.cfg.Prompt.Style == config.PromptBar {
 		return "  "
 	}
@@ -237,6 +253,9 @@ func (g *Game) inputColors(promptLen int, now time.Time) func(cell int) color.RG
 	start, end := commandWord([]rune(g.editor.Text()))
 	cmdFrom, cmdTo := promptLen+start, promptLen+end
 	cmdColor := g.commandColor(g.classifyCommand(g.editor.Text(), now))
+	if g.target != nil { // what's typed goes to a job, not the shell
+		cmdFrom, cmdTo = 0, 0
+	}
 	return func(cell int) color.RGBA {
 		switch {
 		case cell >= selFrom && cell < selTo:
@@ -580,6 +599,8 @@ func (g *Game) statusHint(now time.Time) (hint string, spinner bool) {
 	switch {
 	case g.flashText != "" && now.Before(g.flashUntil):
 		hint = g.flashText
+	case g.target != nil:
+		hint, spinner = "sending to "+g.watchOf(g.target).name+" · esc returns to the shell", true
 	case g.scroll > 0:
 		hint = "scrolled up · pgdn to return"
 	case g.screenJob() != nil:

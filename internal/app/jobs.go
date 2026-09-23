@@ -53,6 +53,7 @@ func (g *Game) background() {
 
 // openJob shows a job full screen; the keyboard goes to it while it runs.
 func (g *Game) openJob(j *jobs.Job) {
+	g.exitTarget()
 	g.viewing = j
 	g.panel.open = false
 	g.scroll = 0
