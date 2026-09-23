@@ -17,6 +17,15 @@ type panel struct {
 	kind     panelKind
 	selected int // index into jobs.Listed() or helpCommands
 	scroll   int // help: extra lines scrolled past the selection on short windows
+
+	// The history search (Ctrl+R).
+	query   []rune
+	matches []terminal.Match
+
+	// The output search (Cmd+F), with query above.
+	finds   []findMatch
+	findSB  *terminal.Scrollback // what finds were searched in
+	findLen int                  // and how many lines it had
 }
 
 type panelKind int
@@ -24,6 +33,8 @@ type panelKind int
 const (
 	panelJobs panelKind = iota
 	panelHelp
+	panelHistory
+	panelFind
 )
 
 // background detaches the attached job: it keeps running and its output keeps
@@ -33,6 +44,9 @@ func (g *Game) background() {
 	g.parser.End()
 	g.attached = nil
 	j.Listed = true
+	if b := g.blockOf(j); b != nil {
+		b.background = true
+	}
 	g.scrollback.Append(terminal.System, fmt.Sprintf("[%d] moved to background: %s · ctrl+t to see jobs", j.ID, j.Command), time.Now())
 	g.scroll = 0
 }

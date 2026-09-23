@@ -57,6 +57,9 @@ A emulação usa o [`charmbracelet/x/vt`](https://github.com/charmbracelet/x/tre
 | --- | --- | --- |
 | Enter | executa a linha | envia Enter ao programa |
 | ↑ / ↓ | navega no histórico | envia as setas ao programa |
+| Ctrl+R | busca no histórico | envia ao programa |
+| Cmd+F (Ctrl+Shift+F no Linux e Windows) | busca na saída | busca na saída |
+| Cmd+clique (Ctrl+clique no Linux e Windows) | abre o link ou arquivo clicado na saída | abre o link ou arquivo clicado na saída |
 | Tab, → (no fim da linha) | aceita a sugestão mostrada depois do cursor | envia ao programa |
 | Shift+←/→, Shift+Home/End | seleciona texto, marcado com pontinhos acima dos caracteres; digitar ou apagar substitui a seleção | — |
 | Arrastar o mouse na saída (2 cliques: palavra, 3 cliques: linha) | seleciona o texto da saída | seleciona o texto da saída |
@@ -74,6 +77,33 @@ A emulação usa o [`charmbracelet/x/vt`](https://github.com/charmbracelet/x/tre
 Para copiar a saída de um comando, arraste o mouse sobre ela: o trecho ganha um fundo na cor de destaque, e arrastar além do topo ou da base rola o histórico. A seleção fica presa ao texto, então não se desloca quando chega saída nova; Esc ou um clique a desfazem. Copiar, recortar e colar usam a área de transferência do sistema, então o texto vai e vem entre o doted e outros apps (no macOS pelo `pbcopy`/`pbpaste`, no Linux pelo `wl-copy`/`wl-paste`, `xclip` ou `xsel`, e no Windows pela API do sistema). Ao colar na linha de entrada, quebras de linha viram espaços, então um colar nunca executa um comando. O Ctrl+Y, como no bash, cola de volta o que o Ctrl+U/Ctrl+W apagou, sem mexer na área do sistema. Se o sistema não responder (no Linux sem nenhuma dessas ferramentas, por exemplo), o doted usa a própria área e avisa. Ao copiar ou colar, a barra de status confirma a ação por um instante.
 
 No macOS, Cmd+←/→ vai para o início/fim da linha, Cmd+Backspace apaga até o início e Option+Backspace apaga a palavra anterior.
+
+### Blocos por comando
+
+Cada comando executado vira um bloco: a linha do comando e a saída abaixo dela. À direita da linha do comando aparece como ele foi:
+
+- uma bolinha na cor de destaque, pulsando, e o tempo decorrido enquanto roda;
+- uma bolinha verde e o tempo que levou (`1.2s`) quando termina bem;
+- uma bolinha vermelha, o código de saída e o tempo (`exit 1 · 3.4s`) quando falha ou é morto;
+- `job 2 in the background` quando foi para o background.
+
+Com o mouse sobre a linha do comando, aparecem duas ações: **copy** copia a saída daquele comando (sem a linha do comando) e **rerun** executa o comando de novo. Clicar na barra do prompt, no começo da linha, recolhe a saída numa única linha `… 42 lines`; clicar de novo (ou nessa linha) expande.
+
+### Busca no histórico e na saída
+
+**Ctrl+R** abre a busca no histórico, que começa com o que já estava digitado. As letras digitadas não precisam estar juntas (`gco` encontra `git checkout main`) e aparecem destacadas nos resultados; a busca só diferencia maiúsculas se você digitar uma. ↑/↓ ou Ctrl+R de novo mudam o resultado, Enter coloca o comando no prompt (sem executar) e Esc volta.
+
+**Cmd+F** (Ctrl+Shift+F no Linux e Windows) busca na saída da tela principal ou do job aberto. Todas as ocorrências ganham um fundo na cor de destaque, a atual um pouco mais forte, e a tela rola até ela. Enter vai para a anterior (mais antiga), Shift+Enter para a próxima, e a busca dá a volta nas pontas; se a ocorrência estiver num bloco recolhido, ele se expande. A busca acompanha a saída que continua chegando. Esc ou Cmd+F de novo fecham.
+
+### Links e caminhos
+
+Segurando **Cmd** (Ctrl no Linux e Windows), URLs e caminhos de arquivos que existem na saída ficam sublinhados sob o mouse, e um clique abre: URLs no navegador; arquivos no editor, na linha e coluna indicadas (`./cmd/main.go:42:7`, como nas mensagens de compiladores e testes). Caminhos relativos partem do diretório atual. O editor é o comando de `[links] editor`; sem ele, o doted usa o VS Code (`code -g`) se estiver instalado e, senão, o app padrão do sistema.
+
+### Barra de status e notificações
+
+Depois do diretório, a barra de status mostra o contexto do projeto: o branch do git (com `*` quando há mudanças), a versão do Go (do `go.mod`) ou do Node e quanto tempo o último comando levou, como em `~/Projects/doted   git main* · go 1.26 · last 1.2s`. O git e o node rodam em segundo plano, quando o diretório muda, depois de cada comando, quando a janela volta ao foco e a cada 15 segundos.
+
+Quando um comando que levou pelo menos 10 segundos termina com o doted em segundo plano (outra janela em foco), o sistema mostra uma notificação com o resultado e o comando. No macOS ela vem pelo `osascript`, no Linux pelo `notify-send` e no Windows pelo PowerShell.
 
 ### Comandos internos
 
@@ -158,6 +188,9 @@ EDITOR = "nvim"
 | `[scrollback]` | `lines` |
 | `[history]` | `save` (guardar os comandos entre sessões), `lines` |
 | `[clipboard]` | `system` (copiar e colar pela área de transferência do sistema; com `false`, fica tudo dentro do doted) |
+| `[links]` | `editor` (comando que abre um arquivo clicado, com `{file}`, `{line}` e `{col}`; por exemplo `"zed {file}:{line}:{col}"`) |
+| `[notify]` | `enabled`, `after_seconds` (quanto um comando precisa durar para notificar; padrão 10) |
+| `[status]` | `context` (branch do git, versão do Go/Node e duração do último comando na barra de status) |
 | `[shell]` | `program`, `[shell.env]` |
 | `[colors]` | `background`, `foreground`, `muted`, `accent`, `error`, `border`, `cursor` |
 | `[colors.normal]` / `[colors.bright]` | `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white` |
@@ -217,11 +250,17 @@ internal/
     keys.go              tradução de teclas para bytes de terminal
     settings.go          configuração + fontes, e recarga ao salvar o arquivo
     theme.go             cores e paleta ANSI/256 cores
-    commands.go          envio da linha e comandos internos (cd, jobs, fg...)
+    commands.go          envio da linha e comandos internos (jobs, fg, help...)
     jobs.go              background, lista de jobs e visão do job
+    blocks.go            blocos por comando: resultado, copy/rerun e recolher
+    histsearch.go        busca no histórico (Ctrl+R)
+    find.go              busca na saída (Cmd+F)
+    links.go             URLs e caminhos clicáveis
+    statuscontext.go     branch do git e versão do projeto na barra de status
   config/                arquivo TOML: padrões (default.toml), validação e watcher
   fonts/                 resolução da fonte por nome ou arquivo, com variantes
   jobs/                  jobs em execução ou finalizados, cada um com sua saída
+  notify/                notificações do sistema (osascript, notify-send, PowerShell)
   shell/                 sessão (shell, ambiente, diretório) e processos em PTY
   terminal/              modelo sem dependência de UI
     parser.go            interpretação da saída do programa (texto, SGR, CR/BS, erase)

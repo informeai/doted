@@ -24,6 +24,7 @@ func (g *Game) submit() {
 		g.scrollback.Append(terminal.Error, err.Error(), time.Now())
 		return
 	}
+	g.startBlock(cmd, j, background, time.Now())
 	if background {
 		j.Listed = true
 		g.scrollback.Append(terminal.System, fmt.Sprintf("[%d] running in background: %s · ctrl+t to see jobs", j.ID, j.Command), time.Now())

@@ -31,11 +31,33 @@ type Config struct {
 	Shell      Shell      `toml:"shell"`
 	History    History    `toml:"history"`
 	Clipboard  Clipboard  `toml:"clipboard"`
+	Links      Links      `toml:"links"`
+	Notify     Notify     `toml:"notify"`
+	Status     Status     `toml:"status"`
 	Colors     Colors     `toml:"colors"`
 }
 
 type Clipboard struct {
 	System bool `toml:"system"`
+}
+
+type Links struct {
+	// Editor opens a file clicked in the output: a command line where
+	// {file}, {line} and {col} are replaced. Empty picks VS Code when
+	// installed, else the system's opener.
+	Editor string `toml:"editor"`
+}
+
+type Notify struct {
+	Enabled bool `toml:"enabled"`
+	// AfterSeconds is how long a command must run to be worth a notification.
+	AfterSeconds int `toml:"after_seconds"`
+}
+
+type Status struct {
+	// Context shows the git branch, the project's Go or Node version and how
+	// long the last command took.
+	Context bool `toml:"context"`
 }
 
 type History struct {

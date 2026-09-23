@@ -63,6 +63,26 @@ lines = 10000
 # or xclip or xsel (X11).
 system = true
 
+[links]
+# Cmd+click (Ctrl+click on Linux and Windows) opens a URL or a file path
+# shown in the output, like main.go:42. Files open with this command line,
+# where {file}, {line} and {col} are replaced; empty uses VS Code (code -g)
+# when installed, else the system's default app. Examples:
+#   editor = "zed {file}:{line}:{col}"
+#   editor = "subl {file}:{line}:{col}"
+editor = ""
+
+[notify]
+# A system notification when a command that ran for at least after_seconds
+# finishes while doted is in the background.
+enabled = true
+after_seconds = 10
+
+[status]
+# Show the git branch (with * when there are changes), the project's Go or
+# Node version and how long the last command took in the status line.
+context = true
+
 [shell]
 # Program used to run commands as `<program> -c "<command>"`. Empty uses $SHELL.
 program = ""

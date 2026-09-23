@@ -119,10 +119,15 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawScreen(screen, sj, pad, outputBottom-float64(sj.Screen().Height())*f.lineH, now)
 	} else {
 		g.drawScrollback(screen, sb, jobCursor, pad, outputBottom, now)
+		g.drawLinkHover(screen)
 	}
 	switch {
 	case g.panel.open && g.panel.kind == panelHelp:
 		g.drawHelpPanel(screen, pad, w-pad, upperRule-gap)
+	case g.panel.open && g.panel.kind == panelHistory:
+		g.drawHistoryPanel(screen, pad, w-pad, upperRule-gap)
+	case g.panel.open && g.panel.kind == panelFind:
+		g.drawFindPanel(screen, pad, w-pad, upperRule-gap)
 	case g.panel.open:
 		g.drawJobsPanel(screen, pad, w-pad, upperRule-gap, now)
 	}
@@ -286,8 +291,24 @@ func (g *Game) drawScrollback(dst *ebiten.Image, sb *terminal.Scrollback, cursor
 	skip := g.scroll
 	last := sb.Len() - 1
 	g.rows = g.rows[:0]
+	g.actions = g.actions[:0]
+	folded := g.foldedRanges(sb)
 	for i := last; i >= 0 && y-f.lineH >= top; i-- {
 		line := sb.At(i)
+		seq := sb.Seq(i)
+		if hidden(seq, folded) {
+			continue
+		}
+		b := g.blockAtSeq(sb, seq)
+		if b != nil && b.collapsed {
+			// The "… N lines" row sits under the folded command.
+			if skip > 0 {
+				skip--
+			} else {
+				y -= f.lineH
+				g.drawFoldedRow(dst, seq, foldedCount(folded, seq), pad, y)
+			}
+		}
 		rows := terminal.Wrap(line.Cells, g.cols)
 		curRow, curCol := -1, 0
 		if i == last && cursorCol >= 0 {
@@ -306,10 +327,14 @@ func (g *Game) drawScrollback(dst *ebiten.Image, sb *terminal.Scrollback, cursor
 			row := visibleRow{seq: sb.Seq(i), start: j * g.cols, n: len(rows[j]), y: y}
 			g.rows = append(g.rows, row)
 			g.drawRowSelection(dst, sb, row, len(line.Cells), pad, y+dy)
+			g.drawFindHits(dst, sb, row, pad, y+dy)
 			g.drawCells(dst, rows[j], pad, y+dy, line.Kind, alpha)
 			// Commands that were run keep the prompt bar they were typed at.
 			if j == 0 && line.Kind == terminal.Command && g.cfg.Prompt.Style == config.PromptBar {
 				g.drawPrompt(dst, pad, y+dy, g.theme.Accent, alpha)
+			}
+			if j == 0 && b != nil {
+				g.drawBlockHeader(dst, b, seq, len(rows[j]), pad, y+dy, now)
 			}
 			if j == curRow {
 				var under rune
@@ -522,6 +547,11 @@ func (g *Game) drawStatus(dst *ebiten.Image, left, y, right float64, now time.Ti
 		g.drawText(dst, truncate(title, titleCols), left, y, g.theme.Muted, 1)
 	} else {
 		g.drawPath(dst, left, y, titleCols, now)
+		// The project's context follows the path, if there's room.
+		pathCols := utf8.RuneCountInString(truncate(string(g.path.to), titleCols))
+		if ctx := g.contextText(); ctx != "" && titleCols-pathCols-3 >= 8 {
+			g.drawText(dst, truncate(ctx, titleCols-pathCols-3), left+float64(pathCols+3)*f.cellW, y, g.theme.Muted, 1)
+		}
 	}
 	if hint == "" {
 		return

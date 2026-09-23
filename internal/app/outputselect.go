@@ -97,10 +97,22 @@ func (g *Game) handleMouse(now time.Time) {
 	mx, my := ebiten.CursorPosition()
 	x, y := float64(mx), float64(my)
 	over := !g.panel.open && y >= g.outTop && y < g.outBottom
+	if _, _, ok := g.hoveredLink(x, y); ok && over {
+		g.setCursorShapeTo(ebiten.CursorShapePointer)
+		if g.handleLinkClick(x, y) {
+			g.outSel.clear()
+		}
+		return
+	}
 	g.setCursorShape(over)
 
 	switch {
 	case over && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft):
+		if a, ok := g.actionAt(x, y); ok {
+			g.outSel.clear()
+			g.runBlockAction(a)
+			return
+		}
 		pos, ok := g.hitTest(x, y)
 		if !ok {
 			return
@@ -145,6 +157,10 @@ func (g *Game) setCursorShape(text bool) {
 	if text {
 		shape = ebiten.CursorShapeText
 	}
+	g.setCursorShapeTo(shape)
+}
+
+func (g *Game) setCursorShapeTo(shape ebiten.CursorShapeType) {
 	if shape != g.cursorShape {
 		ebiten.SetCursorShape(shape)
 		g.cursorShape = shape

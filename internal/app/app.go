@@ -87,6 +87,14 @@ type Game struct {
 	faces      *faceSet // rebuilt when the font settings or the scale change
 	// Where the output was drawn, for the mouse to find text in it.
 	rows                       []visibleRow
+	blocks                     map[int]*block              // commands run, by their line's seq; see blocks.go
+	actions                    []blockAction               // clickable spots of the blocks in the last frame
+	context                    contextState                // git branch and project for the status line; see statuscontext.go
+	lastDuration               time.Duration               // how long the last foreground command took
+	focused                    bool                        // whether the window had the focus last tick
+	linkCache                  linkCache                   // the last link looked up under the mouse
+	opener                     func(*Game, []string) error // starts the program that opens a link
+	notifier                   func(title, body string)    // shows a desktop notification
 	outTop, outBottom, outLeft float64
 }
 
@@ -115,6 +123,8 @@ func New(s Settings, configPath string) (*Game, error) {
 		session:         shell.NewSession(dir),
 		jobs:            jobs.NewManager(s.Config.Scrollback.Lines),
 		scale:           1,
+		opener:          startDetached,
+		notifier:        sendNotification,
 		cols:            80,
 		outputRows:      24,
 		sparks:          newSparks(uint64(time.Now().UnixNano())),
@@ -127,6 +137,10 @@ func New(s Settings, configPath string) (*Game, error) {
 	g.apply(s)
 	g.loadHistory()
 	g.trackDir(time.Now())
+	if g.focusChanged() {
+		g.context.stale = true
+	}
+	g.watchContext(time.Now())
 	if desktop {
 		if err := g.session.ImportLoginEnvironment(loginEnvTimeout); err != nil {
 			g.notify(terminal.Error, err.Error())
@@ -258,8 +272,14 @@ func (g *Game) Update() error {
 	g.flushNotices()
 
 	switch {
+	case (!g.panel.open || g.panel.kind == panelHistory) && clipboardChord(ebiten.KeyF):
+		g.openFind()
+	case g.panel.open && g.panel.kind == panelFind:
+		g.handleFindKeys()
 	case g.panel.open && g.panel.kind == panelHelp:
 		g.handleHelpKeys()
+	case g.panel.open && g.panel.kind == panelHistory:
+		g.handleHistoryKeys()
 	case g.panel.open:
 		g.handlePanelKeys()
 	case g.viewing != nil:
@@ -274,6 +294,10 @@ func (g *Game) Update() error {
 	g.updateZap(time.Now())
 	g.sparks.step(tickSeconds)
 	g.trackDir(time.Now())
+	if g.focusChanged() {
+		g.context.stale = true
+	}
+	g.watchContext(time.Now())
 
 	g.trackWindow(time.Now())
 	if g.quit || ebiten.IsWindowBeingClosed() {
@@ -296,6 +320,9 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 // handleJobEvent mirrors the attached job's output into the main view and
 // reports background jobs that finish.
 func (g *Game) handleJobEvent(j *jobs.Job, ev shell.Event) {
+	if ev.Done {
+		g.endBlock(j, time.Now())
+	}
 	if j == g.attached {
 		if !ev.Done {
 			g.parser.Write(ev.Data, time.Now())
@@ -303,7 +330,8 @@ func (g *Game) handleJobEvent(j *jobs.Job, ev shell.Event) {
 		}
 		g.parser.End()
 		g.attached = nil
-		if ev.Status != "" {
+		// The block's badge shows how it ended; say it only without one.
+		if ev.Status != "" && g.blockOf(j) == nil {
 			g.notify(terminal.System, ev.Status)
 		}
 		// It ended in the foreground: the next command carries on from its
@@ -367,6 +395,8 @@ func (g *Game) handleKeyboard() {
 			g.scroll = 0
 		case inpututil.IsKeyJustPressed(ebiten.KeyT):
 			g.openPanel()
+		case inpututil.IsKeyJustPressed(ebiten.KeyR):
+			g.openHistorySearch()
 		case inpututil.IsKeyJustPressed(ebiten.KeyD):
 			if g.editor.Empty() {
 				g.requestQuit()
@@ -494,7 +524,7 @@ func (g *Game) handleScrolling() {
 }
 
 func (g *Game) scrollBy(rows int) {
-	maxScroll := max(0, g.visibleScrollback().Rows(g.cols)-g.outputRows)
+	maxScroll := max(0, g.totalRows(g.visibleScrollback())-g.outputRows)
 	g.scroll = min(max(0, g.scroll+rows), maxScroll)
 }
 

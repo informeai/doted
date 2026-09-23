@@ -25,6 +25,13 @@ func (s *Session) FindCommand(name string) bool {
 		}
 		return isExecutable(path)
 	}
+	_, ok := s.LookPath(name)
+	return ok
+}
+
+// LookPath finds the program name in the PATH commands get, like
+// exec.LookPath but with the session's environment and directory.
+func (s *Session) LookPath(name string) (string, bool) {
 	for _, dir := range filepath.SplitList(s.lookupEnv("PATH")) {
 		if dir == "" {
 			dir = "." // an empty PATH entry means the current directory
@@ -33,13 +40,16 @@ func (s *Session) FindCommand(name string) bool {
 			dir = filepath.Join(s.dir, dir)
 		}
 		for _, candidate := range executableNames(name) {
-			if isExecutable(filepath.Join(dir, candidate)) {
-				return true
+			if path := filepath.Join(dir, candidate); isExecutable(path) {
+				return path, true
 			}
 		}
 	}
-	return false
+	return "", false
 }
+
+// Getenv is the value of key in the environment commands get.
+func (s *Session) Getenv(key string) string { return s.lookupEnv(key) }
 
 // Commands lists the programs in the PATH commands get, each name once.
 func (s *Session) Commands() []string {

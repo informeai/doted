@@ -27,6 +27,10 @@ var helpCommands = []helpCommand{
 
 var helpKeys = []struct{ keys, desc string }{
 	{"enter · ↑↓", "run the line · browse history"},
+	{"ctrl+r", "search the history"},
+	{"cmd+f", "search the output (ctrl+shift+f on linux/windows)"},
+	{"cmd+click", "open a URL or file:line in the output (ctrl+click on linux/windows)"},
+	{"click the bar", "fold a command's output · hover it to copy or rerun"},
 	{"tab · →", "accept the suggestion shown after the cursor"},
 	{"shift+←→", "select text (also shift+home/end); typing replaces it"},
 	{"mouse drag", "select output (double-click a word, triple-click a line)"},
