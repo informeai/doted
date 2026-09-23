@@ -88,29 +88,34 @@ func easeOutBack(p float64) float64 {
 // drawPath draws the working directory at (x, y) in at most cols columns,
 // rolling from the previous one if it just changed.
 func (g *Game) drawPath(dst *ebiten.Image, x, y float64, cols int, now time.Time) {
+	g.drawRoll(dst, g.path, x, y, cols, g.theme.Accent, pathAlpha, now)
+}
+
+// drawRoll draws r's text at (x, y) in at most cols columns, in the middle
+// of its roll if it's still rolling.
+func (g *Game) drawRoll(dst *ebiten.Image, r pathRoll, x, y float64, cols int, clr color.RGBA, alpha float64, now time.Time) {
 	f := g.faces
-	accent := g.theme.Accent
-	to := []rune(truncate(string(g.path.to), cols))
-	if !g.path.rolling(now) {
-		g.drawText(dst, string(to), x, y, accent, pathAlpha)
+	to := []rune(truncate(string(r.to), cols))
+	if !r.rolling(now) {
+		g.drawText(dst, string(to), x, y, clr, alpha)
 		return
 	}
-	from := []rune(truncate(string(g.path.from), cols))
+	from := []rune(truncate(string(r.from), cols))
 	n := max(len(from), len(to))
 
-	// Clip to the status row so rolling characters don't spill over.
+	// Clip to the row so rolling characters don't spill over.
 	clip := image.Rect(int(x), int(y), int(math.Ceil(x+float64(n)*f.cellW)), int(math.Ceil(y+f.lineH)))
 	row := dst.SubImage(clip).(*ebiten.Image)
 	for i := range n {
 		old, cur := runeOr(from, i), runeOr(to, i)
 		cx := x + float64(i)*f.cellW
 		if old == cur {
-			g.drawRune(row, cur, cx, y, accent, pathAlpha)
+			g.drawRune(row, cur, cx, y, clr, alpha)
 			continue
 		}
-		p := g.path.progress(i, n, now)
-		g.drawRune(row, old, cx, y-p*f.lineH, accent, pathAlpha*math.Max(0, 1-p))
-		g.drawRune(row, cur, cx, y+(1-p)*f.lineH, accent, pathAlpha*math.Min(1, p))
+		p := r.progress(i, n, now)
+		g.drawRune(row, old, cx, y-p*f.lineH, clr, alpha*math.Max(0, 1-p))
+		g.drawRune(row, cur, cx, y+(1-p)*f.lineH, clr, alpha*math.Min(1, p))
 	}
 }
 

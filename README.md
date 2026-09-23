@@ -101,7 +101,9 @@ Segurando **Cmd** (Ctrl no Linux e Windows), URLs e caminhos de arquivos que exi
 
 ### Barra de status e notificações
 
-Depois do diretório, a barra de status mostra o contexto do projeto. Primeiro vem o branch do git: o logo do Git, na cor do texto do tema (`foreground`), e o nome do branch em branco. Ao lado, o que mudou no repositório, cada tipo na sua cor: `~2` alterados (amarelo), `+1` adicionados (verde), `-1` removidos (vermelho), `?2` não rastreados, `!1` em conflito e `↑1`/`↓2` commits à frente/atrás do remoto. Depois, quanto tempo o último comando levou (`last 1.2s`). Se o caminho for longo, ele encurta para dar lugar ao contexto. O git roda em segundo plano, quando o diretório muda, depois de cada comando, quando a janela volta ao foco e a cada 15 segundos.
+Depois do diretório, a barra de status mostra o contexto do projeto. Primeiro vem o branch do git: o logo do Git, na cor do texto do tema (`foreground`), e o nome do branch em branco. Ao lado, o que mudou no repositório, cada tipo na sua cor: `~2` alterados (amarelo), `+1` adicionados (verde), `-1` removidos (vermelho), `?2` não rastreados, `!1` em conflito e `↑1`/`↓2` commits à frente/atrás do remoto. Depois, quanto tempo o último comando levou (`last 1.2s`). Se o caminho for longo, ele encurta para dar lugar ao contexto.
+
+Quando o branch muda, o nome rola como o caminho no `cd` (só as letras que mudaram) enquanto o logo dá um quarto de volta. Num branch que ainda não tinha aparecido na sessão, como um recém-criado com `git switch -c`, o logo também solta faíscas. Ao entrar ou sair de um repositório, o logo, o nome e as mudanças aparecem ou somem com um fade. Com `[animation] enabled = false`, o branch só troca, e `particles = false` desliga as faíscas. O git roda em segundo plano, quando o diretório muda, depois de cada comando, quando a janela volta ao foco e a cada 15 segundos.
 
 Quando um comando que levou pelo menos 10 segundos termina com o doted em segundo plano (outra janela em foco), o sistema mostra uma notificação com o resultado e o comando. No macOS ela vem pelo `osascript`, no Linux pelo `notify-send` e no Windows pelo PowerShell.
 
@@ -259,6 +261,7 @@ internal/
     statuscontext.go     leitura do git status em segundo plano
     gitbadge.go          branch e mudanças do git na barra de status
     gitlogo.go           logo do Git desenhado a partir do SVG oficial
+    gitanim.go           animações do branch: rolagem, giro do logo, faíscas e fade
   config/                arquivo TOML: padrões (default.toml), validação e watcher
   fonts/                 resolução da fonte por nome ou arquivo, com variantes
   jobs/                  jobs em execução ou finalizados, cada um com sua saída

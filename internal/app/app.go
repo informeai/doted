@@ -90,6 +90,7 @@ type Game struct {
 	blocks                     map[int]*block              // commands run, by their line's seq; see blocks.go
 	actions                    []blockAction               // clickable spots of the blocks in the last frame
 	context                    contextState                // git branch and project for the status line; see statuscontext.go
+	branch                     branchAnim                  // the branch's animations; see gitanim.go
 	lastDuration               time.Duration               // how long the last foreground command took
 	focused                    bool                        // whether the window had the focus last tick
 	linkCache                  linkCache                   // the last link looked up under the mouse
@@ -137,10 +138,7 @@ func New(s Settings, configPath string) (*Game, error) {
 	g.apply(s)
 	g.loadHistory()
 	g.trackDir(time.Now())
-	if g.focusChanged() {
-		g.context.stale = true
-	}
-	g.watchContext(time.Now())
+	g.watchContext(time.Now()) // start looking up the git branch right away
 	if desktop {
 		if err := g.session.ImportLoginEnvironment(loginEnvTimeout); err != nil {
 			g.notify(terminal.Error, err.Error())
@@ -293,6 +291,7 @@ func (g *Game) Update() error {
 	g.handleScrolling()
 	g.updateZap(time.Now())
 	g.sparks.step(tickSeconds)
+	g.stepBranch()
 	g.trackDir(time.Now())
 	if g.focusChanged() {
 		g.context.stale = true

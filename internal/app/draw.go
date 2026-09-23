@@ -552,7 +552,10 @@ func (g *Game) drawStatus(dst *ebiten.Image, left, y, right float64, now time.Ti
 		pathMax := min(titleCols, max(minPath, titleCols-g.contextCols()-3))
 		g.drawPath(dst, left, y, pathMax, now)
 		pathCols := utf8.RuneCountInString(truncate(string(g.path.to), pathMax))
-		g.drawContext(dst, left+float64(pathCols+3)*f.cellW, y, left+float64(titleCols)*f.cellW)
+		if g.path.rolling(now) { // the old path is still leaving
+			pathCols = max(pathCols, utf8.RuneCountInString(truncate(string(g.path.from), pathMax)))
+		}
+		g.drawContext(dst, left+float64(pathCols+3)*f.cellW, y, left+float64(titleCols)*f.cellW, now)
 	}
 	if hint == "" {
 		return

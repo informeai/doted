@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"math"
-	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -48,7 +48,8 @@ const badgeCols = 2
 // contextCols is how many cells drawContext wants.
 func (g *Game) contextCols() int {
 	n := 0
-	if info, ok := g.currentContext(); ok && info.branch != "" {
+	info, ok := g.currentContext()
+	if info, _ = g.branch.fade(info, time.Now()); ok && info.branch != "" {
 		n += badgeCols + utf8.RuneCountInString(info.branch) + 1
 		for _, m := range g.gitMarks(info) {
 			n += 1 + utf8.RuneCountInString(m.text)
@@ -62,21 +63,25 @@ func (g *Game) contextCols() int {
 
 // drawContext draws the project's context from x, stopping before right:
 // the git badge and marks, then the last duration.
-func (g *Game) drawContext(dst *ebiten.Image, x, y, right float64) {
+func (g *Game) drawContext(dst *ebiten.Image, x, y, right float64, now time.Time) {
 	f := g.faces
 	info, ok := g.currentContext()
-	if ok && info.branch != "" {
-		x = g.drawGitBadge(dst, info, x, y, right)
+	info, alpha := g.branch.fade(info, now)
+	if ok && info.branch != "" && alpha > 0 {
+		x = g.drawGitBadge(dst, info, x, y, right, alpha, now)
 		for _, m := range g.gitMarks(info) {
 			w := float64(utf8.RuneCountInString(m.text)) * f.cellW
 			if x+f.cellW+w > right {
-				return
+				break
 			}
 			x += f.cellW
-			g.drawText(dst, m.text, x, y, m.clr, 1)
+			g.drawText(dst, m.text, x, y, m.clr, alpha)
 			x += w
 		}
 		x += f.cellW
+	}
+	if a := g.branch; a.sparks != nil {
+		a.sparks.draw(dst, a.center[0], a.center[1], g.scale, g.theme.Accent, g.theme.Foreground)
 	}
 	rest := g.contextText()
 	if rest == "" {
@@ -87,20 +92,31 @@ func (g *Game) drawContext(dst *ebiten.Image, x, y, right float64) {
 	}
 }
 
-// drawGitBadge draws the branch icon and name at x and returns where they
-// end; x when there's no room for them.
-func (g *Game) drawGitBadge(dst *ebiten.Image, info projectContext, x, y, right float64) float64 {
+// drawGitBadge draws the Git logo and the branch name at x and returns
+// where they end; x when there's no room for them.
+func (g *Game) drawGitBadge(dst *ebiten.Image, info projectContext, x, y, right, alpha float64, now time.Time) float64 {
 	f := g.faces
-	iconW, gap := math.Min(f.lineH, f.glyphH*1.6)*0.78, f.cellW*0.6
+	h := math.Min(f.lineH, f.glyphH*1.6)
+	size := h * 0.78
+	iconW, gap := size, f.cellW*0.6
 	maxName := int((right - x - iconW - gap) / f.cellW)
 	if maxName < 4 {
 		return x
 	}
-	name := truncate(info.branch, maxName)
-	h := math.Min(f.lineH, f.glyphH*1.6)
-	top := y + (f.lineH-h)/2
-	size := h * 0.78
-	drawGitLogo(dst, x, top+(h-size)/2, size, g.theme.Foreground)
-	g.drawText(dst, strings.TrimSpace(name), x+iconW+gap, y, badgeText, 1)
-	return x + iconW + gap + float64(utf8.RuneCountInString(name))*f.cellW
+	top := y + (f.lineH-size)/2
+	drawGitLogo(dst, x, top, size, g.branch.spin(now), scaleAlpha(g.theme.Foreground, alpha))
+	g.branch.center = [2]float64{x + size/2, top + size/2}
+
+	// While switching, the name rolls from the old one; it takes the room of
+	// the longer of the two meanwhile.
+	roll := g.branch.name
+	if string(roll.to) != info.branch {
+		roll = pathRoll{from: []rune(info.branch), to: []rune(info.branch)} // fading out
+	}
+	g.drawRoll(dst, roll, x+iconW+gap, y, maxName, badgeText, alpha, now)
+	n := len([]rune(truncate(string(roll.to), maxName)))
+	if roll.rolling(now) {
+		n = max(n, len([]rune(truncate(string(roll.from), maxName))))
+	}
+	return x + iconW + gap + float64(n)*f.cellW
 }

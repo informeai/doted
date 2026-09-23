@@ -112,13 +112,19 @@ func parseSVGPath(d string) []logoOp {
 	return ops
 }
 
-// drawGitLogo draws the logo centered in the square of side size at (x, y).
-func drawGitLogo(dst *ebiten.Image, x, y, size float64, clr color.RGBA) {
+// drawGitLogo draws the logo centered in the square of side size at (x, y),
+// turned by angle radians around its center.
+func drawGitLogo(dst *ebiten.Image, x, y, size, angle float64, clr color.RGBA) {
 	shape := gitLogo()
 	w, h := shape.maxX-shape.minX, shape.maxY-shape.minY
 	s := size / math.Max(w, h)
-	ox, oy := x+(size-w*s)/2-shape.minX*s, y+(size-h*s)/2-shape.minY*s
-	pt := func(p [2]float64) (float32, float32) { return float32(ox + p[0]*s), float32(oy + p[1]*s) }
+	cx, cy := (shape.minX+shape.maxX)/2, (shape.minY+shape.maxY)/2
+	sin, cos := math.Sincos(angle)
+	pt := func(p [2]float64) (float32, float32) {
+		dx, dy := p[0]-cx, p[1]-cy
+		dx, dy = dx*cos-dy*sin, dx*sin+dy*cos
+		return float32(x + size/2 + dx*s), float32(y + size/2 + dy*s)
+	}
 
 	var p vector.Path
 	for _, op := range shape.ops {

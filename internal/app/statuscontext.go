@@ -57,7 +57,9 @@ func (g *Game) watchContext(now time.Time) {
 	}
 	select {
 	case info := <-c.results:
+		prev := c.info
 		c.info, c.busy = info, false
+		g.trackBranch(prev, info, now)
 	default:
 	}
 	if !g.cfg.Status.Context || c.busy {
@@ -67,9 +69,6 @@ func (g *Game) watchContext(now time.Time) {
 	if dir == c.info.dir && !c.stale && now.Sub(c.lastRun) < contextEvery {
 		return
 	}
-	if dir != c.info.dir {
-		c.info = projectContext{dir: dir} // don't show the old project's context meanwhile
-	}
 	c.busy, c.stale, c.lastRun = true, false, now
 	probe, path := c.probe, g.session.Getenv("PATH")
 	if probe == nil {
@@ -78,10 +77,11 @@ func (g *Game) watchContext(now time.Time) {
 	go func() { c.results <- probe(dir, path) }()
 }
 
-// currentContext is what's known about the working directory, if anything.
+// currentContext is the context last looked up. Right after a cd it may be
+// the previous directory's for a moment, until the lookup comes back; that
+// keeps the branch from blinking away between two folders of one repository.
 func (g *Game) currentContext() (projectContext, bool) {
-	info := g.context.info
-	return info, g.cfg.Status.Context && info.dir == g.session.Dir()
+	return g.context.info, g.cfg.Status.Context
 }
 
 // contextText is the context after the git part: the last command's
