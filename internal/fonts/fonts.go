@@ -31,8 +31,8 @@ const (
 	BoldItalic
 )
 
-// Face is one font variant. Weight, when non-zero, selects an instance of a
-// variable font through its "wght" axis.
+// Face is one font variant. Weight, when non-zero, sets the "wght" axis of a
+// variable font; static fonts ignore it.
 type Face struct {
 	Source *text.GoTextFaceSource
 	Weight float32
@@ -52,9 +52,12 @@ type Family struct {
 	Faces [4]Face
 }
 
+// EmbeddedName selects the built-in font in the config.
+const EmbeddedName = "Go Mono"
+
 // Embedded returns Go Mono, which is compiled into the binary.
 func Embedded() Family {
-	fam := Family{Name: "Go Mono"}
+	fam := Family{Name: EmbeddedName}
 	for i, ttf := range [][]byte{gomono.TTF, gomonobold.TTF, gomonoitalic.TTF, gomonobolditalic.TTF} {
 		src, err := text.NewGoTextFaceSource(bytes.NewReader(ttf))
 		if err != nil {
@@ -65,13 +68,21 @@ func Embedded() Family {
 	return fam
 }
 
-// Load resolves spec: empty means the embedded font, something that looks
-// like a file path is loaded from disk (the same face is used for every
-// variant), anything else is looked up among the installed fonts by family
-// name. Warnings report non-fatal problems, like a proportional font.
+// Load resolves spec:
+//   - empty: the system's monospace font, or the embedded one if there is none
+//   - "Go Mono": the embedded font
+//   - something that looks like a file path: that file, used for every variant
+//   - anything else: an installed font family, looked up by name
+//
+// Warnings report non-fatal problems, like a proportional font.
 func Load(spec string) (fam Family, warnings []string, err error) {
 	switch {
 	case spec == "":
+		if fam, err := systemMonospace(); err == nil {
+			return fam, nil, nil
+		}
+		return Embedded(), nil, nil
+	case strings.EqualFold(spec, EmbeddedName):
 		return Embedded(), nil, nil
 	case isPath(spec):
 		fam, err = loadFile(expandHome(spec))
@@ -146,10 +157,9 @@ func loadSystem(family string) (Family, error) {
 		if err != nil {
 			return Family{}, err
 		}
-		fam.Faces[v] = Face{Source: src}
-		if fp.Location.Instance > 0 { // a named instance of a variable font
-			fam.Faces[v].Weight = float32(fp.Aspect.Weight)
-		}
+		// For variable fonts the file may hold every weight; ask for the one
+		// this variant needs.
+		fam.Faces[v] = Face{Source: src, Weight: float32(target.Weight)}
 	}
 	return fam, nil
 }

@@ -3,14 +3,29 @@ package fonts
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"golang.org/x/image/font/gofont/gomono"
 	"golang.org/x/image/font/gofont/goregular"
 )
 
-func TestLoadEmbedded(t *testing.T) {
+func TestLoadSystemDefault(t *testing.T) {
 	fam, warns, err := Load("")
+	if err != nil || len(warns) != 0 {
+		t.Fatalf("got %v %v", warns, err)
+	}
+	if runtime.GOOS == "darwin" && fam.Name != "SF Mono" {
+		t.Fatalf("default font on macOS = %q, want SF Mono", fam.Name)
+	}
+	if !monospaced(fam.Faces[Regular]) || !monospaced(fam.Faces[Bold]) {
+		t.Fatalf("%s is not monospaced", fam.Name)
+	}
+	t.Logf("system monospace: %s", fam.Name)
+}
+
+func TestLoadEmbedded(t *testing.T) {
+	fam, warns, err := Load("go mono")
 	if err != nil || len(warns) != 0 || fam.Name != "Go Mono" {
 		t.Fatalf("got %q %v %v", fam.Name, warns, err)
 	}

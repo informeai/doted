@@ -40,7 +40,12 @@ func LoadSettings(path string) (Settings, error) {
 
 // DefaultSettings is used when the config file can't be loaded at startup.
 func DefaultSettings() Settings {
-	return Settings{Config: config.Default(), Fonts: fonts.Embedded()}
+	cfg := config.Default()
+	fam, _, err := fonts.Load(cfg.Font.Family)
+	if err != nil {
+		fam = fonts.Embedded()
+	}
+	return Settings{Config: cfg, Fonts: fam}
 }
 
 type reload struct {

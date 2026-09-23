@@ -60,6 +60,8 @@ No macOS, Cmd+←/→ vai para o início/fim da linha, Cmd+Backspace apaga até 
 
 ## Configuração
 
+O tema padrão é azul, sobre fundo azul-marinho, e a fonte padrão é a monoespaçada do sistema.
+
 O doted lê um arquivo TOML em `~/.config/doted/config.toml` (ou `$XDG_CONFIG_HOME/doted/config.toml`). Para gerar um arquivo com todas as opções comentadas:
 
 ```sh
@@ -117,7 +119,9 @@ Sobre fontes:
 - Com um nome, as variantes negrito e itálico da mesma família são escolhidas automaticamente, incluindo fontes variáveis.
 - Com um caminho de arquivo, a mesma face é usada para todas as variantes.
 - A primeira busca por nome indexa as fontes do sistema e pode levar alguns segundos; o índice fica em cache.
-- Se a fonte não for encontrada, o doted usa a Go Mono embutida e avisa. Fontes que não são monoespaçadas também geram aviso.
+- Por padrão (`family = ""`) é usada a fonte monoespaçada do sistema: SF Mono no macOS (ou Menlo) e a `monospace` do fontconfig no Linux.
+- `family = "Go Mono"` usa a fonte embutida no binário, que também é o último recurso quando nenhuma outra é encontrada.
+- Se uma fonte pedida pelo nome não for encontrada, o doted usa a Go Mono e avisa. Fontes que não são monoespaçadas também geram aviso.
 
 ## Estrutura
 

@@ -22,7 +22,7 @@ func TestDefaultIsValid(t *testing.T) {
 	if err := c.validate(); err != nil {
 		t.Fatal(err)
 	}
-	if c.Font.Size != 15 || c.Prompt.Symbol != "> " || c.Colors.Background.RGBA != (color.RGBA{0x14, 0x15, 0x19, 0xff}) {
+	if c.Font.Size != 15 || c.Prompt.Symbol != "> " || c.Colors.Background.RGBA != (color.RGBA{0x0b, 0x12, 0x20, 0xff}) || c.Font.Family != "" {
 		t.Fatalf("unexpected defaults: %+v", c)
 	}
 }

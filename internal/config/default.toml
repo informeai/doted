@@ -5,9 +5,11 @@
 # height, which only apply on startup.
 
 [font]
-# Name of an installed font ("JetBrains Mono", "Menlo"...) or a path to a
-# .ttf/.otf/.ttc file. Empty uses the built-in Go Mono. With a name, bold and
-# italic variants are picked from the same family automatically.
+# Empty uses the system's monospace font: SF Mono on macOS, fontconfig's
+# "monospace" on Linux. Otherwise, the name of an installed font
+# ("JetBrains Mono", "Menlo"...), "Go Mono" for the built-in font, or a path to
+# a .ttf/.otf/.ttc file. With a name, bold and italic variants are picked from
+# the same family automatically.
 family = ""
 size = 15
 # Row height as a multiple of the font height.
@@ -43,33 +45,33 @@ program = ""
 [shell.env]
 # EDITOR = "nvim"
 
-# Colors are "#rrggbb" or "#rrggbbaa".
+# Colors are "#rrggbb" or "#rrggbbaa". The default theme is blue.
 [colors]
-background = "#141519"
-foreground = "#d8dbe2"
-muted = "#6c717e"   # status line, doted's own messages
-accent = "#d97757"  # prompt, echoed commands, spinner
-error = "#e56b6f"   # errors reported by doted
-border = "#3a3d46"  # rules around the input box
-cursor = "#d8dbe2"
+background = "#0b1220"
+foreground = "#d4def0"
+muted = "#6b7b99"   # status line, doted's own messages
+accent = "#4d9fff"  # prompt, echoed commands, spinner
+error = "#ff6b7a"   # errors reported by doted
+border = "#1f2d45"  # rules around the input box
+cursor = "#4d9fff"
 
 # The 16 ANSI colors programs choose from.
 [colors.normal]
-black = "#1e2026"
-red = "#e56b6f"
-green = "#98c379"
-yellow = "#e5c07b"
-blue = "#61afef"
-magenta = "#c678dd"
-cyan = "#56b6c2"
-white = "#d8dbe2"
+black = "#1a2333"
+red = "#ff6b7a"
+green = "#7fd4a0"
+yellow = "#f2cf7a"
+blue = "#4d9fff"
+magenta = "#b58cff"
+cyan = "#4fd1e0"
+white = "#d4def0"
 
 [colors.bright]
-black = "#5c6370"
-red = "#ff7b7f"
-green = "#b5e08d"
-yellow = "#f5d48f"
-blue = "#7dc4ff"
-magenta = "#da8ef0"
-cyan = "#6ed0dc"
+black = "#4a5a78"
+red = "#ff8f9b"
+green = "#9ee6b8"
+yellow = "#ffe09a"
+blue = "#7ab8ff"
+magenta = "#caa8ff"
+cyan = "#7fe3ef"
 white = "#ffffff"
