@@ -107,6 +107,8 @@ Quando o branch muda, o nome rola como o caminho no `cd` (só as letras que muda
 
 Apagar um branch ou uma tag também aparece na barra, no lugar do branch atual. O nome do branch atual rola até o nome apagado, que fica na cor de erro, e o logo do Git fica vermelho. Um rastro elétrico, como o do autocompletar com Tab, corre pelo meio do nome enquanto o logo sacode, e as letras caem uma a uma, girando, até virarem faíscas vermelhas. No fim, o nome do branch atual sobe de volta ao lugar e o logo volta à cor normal. Para saber o que foi apagado, o doted compara as refs do repositório (branches locais, tags e branches remotos) antes e depois de cada comando, então vale para `git branch -d`, `git tag -d`, `git push origin --delete`, `git fetch --prune`, aliases e outras ferramentas. Várias remoções de uma vez tocam uma depois da outra; a partir de quatro, viram um resumo como `5 branches`.
 
+Renomear um branch (`git branch -m`) usa a animação de checkout, não a de remoção. Renomear o branch atual é como trocar para o novo nome: o nome rola e o logo gira. Renomear outro branch acontece no lugar do atual: o nome atual rola até o nome antigo, que rola para o novo enquanto o logo gira, e depois o branch atual volta. O doted reconhece uma renomeação quando uma ref some e outra do mesmo tipo aparece apontando para o mesmo commit. Tags e branches remotos renomeados (como num `git remote rename`) não animam.
+
 Quando um comando que levou pelo menos 10 segundos termina com o doted em segundo plano (outra janela em foco), o sistema mostra uma notificação com o resultado e o comando. No macOS ela vem pelo `osascript`, no Linux pelo `notify-send` e no Windows pelo PowerShell.
 
 ### Comandos internos

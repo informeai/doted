@@ -101,3 +101,61 @@ func TestProbeFindsRefs(t *testing.T) {
 		t.Fatalf("refs %q gitDir %q", info.refs, info.gitDir)
 	}
 }
+
+func TestParseRefs(t *testing.T) {
+	refs, oids := parseRefs("bbb refs/tags/v1\naaa refs/heads/main\nccc refs/remotes/origin/HEAD\nccc refs/remotes/origin/main\n")
+	if !slices.Equal(refs, []string{"refs/heads/main", "refs/remotes/origin/main", "refs/tags/v1"}) || oids["refs/heads/main"] != "aaa" {
+		t.Fatalf("refs %q oids %v", refs, oids)
+	}
+}
+
+func repoState(branch string, refs map[string]string) projectContext {
+	info := projectContext{gitDir: "/r/.git", branch: branch, oids: refs}
+	for r := range refs {
+		info.refs = append(info.refs, r)
+	}
+	slices.Sort(info.refs)
+	return info
+}
+
+func TestRenames(t *testing.T) {
+	g := newTestGame(t)
+	g.cfg.Animation.Enabled = true
+	now := time.Now()
+
+	// Renaming the current branch plays like a checkout: nothing queued here.
+	before := repoState("feature", map[string]string{"refs/heads/feature": "a1", "refs/heads/main": "b2"})
+	after := repoState("feature-login", map[string]string{"refs/heads/feature-login": "a1", "refs/heads/main": "b2"})
+	g.queueDeletions(before, after, now)
+	if len(g.branch.deletions) != 0 {
+		t.Fatalf("renaming the current branch queued %+v", g.branch.deletions)
+	}
+
+	// Renaming another branch plays in the current one's place, not as a deletion.
+	before = repoState("main", map[string]string{"refs/heads/old": "c3", "refs/heads/main": "b2", "refs/tags/gone": "d4"})
+	after = repoState("main", map[string]string{"refs/heads/new": "c3", "refs/heads/main": "b2"})
+	g.queueDeletions(before, after, now)
+	if len(g.branch.deletions) != 2 {
+		t.Fatalf("queued %d, want a rename and a deletion", len(g.branch.deletions))
+	}
+	r := g.branch.deletions[0]
+	if r.renamed != "new" || r.ref.name != "old" || string(r.in.to) != "old" || string(r.rename.to) != "new" || string(r.back.to) != "main" {
+		t.Fatalf("rename = %+v", r)
+	}
+	mid := r.rename.start.Add(branchSpin / 2)
+	if r.spin(mid) <= 0 || r.iconBlend(mid) != 0 || g.branch.shake(mid) != 0 {
+		t.Fatal("a rename should turn the logo, without red or shaking")
+	}
+	if d := g.branch.deletions[1]; d.renamed != "" || d.ref.name != "gone" {
+		t.Fatalf("deletion = %+v", d)
+	}
+
+	// Remote branches renamed along with their remote don't play.
+	g.branch.deletions = nil
+	before = repoState("main", map[string]string{"refs/heads/main": "b2", "refs/remotes/origin/main": "b2"})
+	after = repoState("main", map[string]string{"refs/heads/main": "b2", "refs/remotes/upstream/main": "b2"})
+	g.queueDeletions(before, after, now)
+	if len(g.branch.deletions) != 0 {
+		t.Fatalf("a renamed remote queued %+v", g.branch.deletions)
+	}
+}

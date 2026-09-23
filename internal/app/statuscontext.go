@@ -30,8 +30,9 @@ type projectContext struct {
 	branch        string
 	ahead, behind int // commits not yet pushed, and not yet pulled
 	changes       gitChanges
-	gitDir        string   // which repository this is
-	refs          []string // its branches, tags and remote branches, sorted
+	gitDir        string            // which repository this is
+	refs          []string          // its branches, tags and remote branches, sorted
+	oids          map[string]string // the commit (or tag object) each ref points to
 }
 
 // gitChanges counts the files git status lists, by kind.
@@ -117,8 +118,8 @@ func probeContext(dir, pathEnv string) projectContext {
 		if out, ok := run("git", "rev-parse", "--absolute-git-dir"); ok {
 			info.gitDir = strings.TrimSpace(out)
 		}
-		if out, ok := run("git", "for-each-ref", "--format=%(refname)", "refs/heads", "refs/tags", "refs/remotes"); ok {
-			info.refs = parseRefs(out)
+		if out, ok := run("git", "for-each-ref", "--format=%(objectname) %(refname)", "refs/heads", "refs/tags", "refs/remotes"); ok {
+			info.refs, info.oids = parseRefs(out)
 		}
 	}
 	return info
@@ -172,18 +173,21 @@ func parseGitStatus(out string) (branch string, ahead, behind int, changes gitCh
 	return branch, ahead, behind, changes
 }
 
-// parseRefs reads git for-each-ref's list, leaving out the remotes' HEAD
+// parseRefs reads git for-each-ref's "<object> <ref>" lines into the refs'
+// names, sorted, and what each points to, leaving out the remotes' HEAD
 // pointers.
-func parseRefs(out string) []string {
-	var refs []string
-	for _, r := range strings.Fields(out) {
-		if strings.HasPrefix(r, "refs/remotes/") && strings.HasSuffix(r, "/HEAD") {
+func parseRefs(out string) (refs []string, oids map[string]string) {
+	refs, oids = []string{}, map[string]string{}
+	for _, line := range strings.Split(out, "\n") {
+		oid, r, ok := strings.Cut(strings.TrimSpace(line), " ")
+		if !ok || strings.HasPrefix(r, "refs/remotes/") && strings.HasSuffix(r, "/HEAD") {
 			continue
 		}
 		refs = append(refs, r)
+		oids[r] = oid
 	}
 	slices.Sort(refs)
-	return refs
+	return refs, oids
 }
 
 // lookIn finds the program name in the directories of pathEnv.

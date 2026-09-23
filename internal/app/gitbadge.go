@@ -117,7 +117,11 @@ func (g *Game) drawGitBadge(dst *ebiten.Image, info projectContext, x, y, right,
 	}
 	shake := g.branch.shake(now) * f.cellW
 	logo := mixRGBA(g.theme.Foreground, g.theme.Error, blend)
-	drawGitLogo(dst, x+shake, top, size, g.branch.spin(now), scaleAlpha(logo, alpha))
+	spin := g.branch.spin(now)
+	if del != nil {
+		spin += del.spin(now)
+	}
+	drawGitLogo(dst, x+shake, top, size, spin, scaleAlpha(logo, alpha))
 	g.branch.center = [2]float64{x + size/2, top + size/2}
 	if del != nil {
 		n := g.drawDeletionName(dst, del, x+iconW+gap, y, maxName, alpha, now)

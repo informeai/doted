@@ -24,10 +24,16 @@ import (
 //  4. the current branch's name rises back into place, and the logo gets
 //     its color back.
 //
-// Deletions are found by comparing the repository's refs before and after
-// each lookup, so aliases, scripts and other tools count too. Several at
-// once play one after another; past maxDeletionsShown they play as one
-// summary like "5 branches".
+// Renaming a branch plays like a checkout instead: renaming the current one
+// is a checkout to the new name (see trackBranch), and renaming another
+// plays in the current one's place, rolling from its old name to the new
+// one as the logo turns, before the current branch rolls back.
+//
+// Deletions and renames are found by comparing the repository's refs before
+// and after each lookup, so aliases, scripts and other tools count too; a
+// ref that went away while another of its kind showed up pointing to the
+// same commit was renamed. Several play one after another; past
+// maxDeletionsShown, deletions play as one summary like "5 branches".
 
 const (
 	deleteTrail       = 280 * time.Millisecond // the trail's run through the name
@@ -36,7 +42,9 @@ const (
 	deleteMaxStagger  = 300 * time.Millisecond // cap on the last letter's delay
 	deleteIconBlend   = 150 * time.Millisecond // the logo turning red and back
 	deleteShake       = 400 * time.Millisecond
-	deleteSparks      = 5 // per letter
+	renameBefore      = 120 * time.Millisecond // old name shown before it rolls
+	renameHold        = 600 * time.Millisecond // new name shown before the branch returns
+	deleteSparks      = 5                      // per letter
 	maxDeletionsShown = 3
 )
 
@@ -65,26 +73,42 @@ func (d deletedRef) label() string {
 	return fmt.Sprintf("%d %s", d.count, noun)
 }
 
-// deletedRefs lists the refs in prev that are missing from cur, both sorted.
-func deletedRefs(prev, cur []string) []deletedRef {
-	var out []deletedRef
+// goneRefs lists the refs in prev that are missing from cur, both sorted.
+func goneRefs(prev, cur []string) []string {
+	var out []string
 	j := 0
 	for _, r := range prev {
 		for j < len(cur) && cur[j] < r {
 			j++
 		}
-		if j < len(cur) && cur[j] == r {
-			continue
-		}
-		switch {
-		case strings.HasPrefix(r, "refs/heads/"):
-			out = append(out, deletedRef{kind: refBranch, name: strings.TrimPrefix(r, "refs/heads/")})
-		case strings.HasPrefix(r, "refs/tags/"):
-			out = append(out, deletedRef{kind: refTag, name: strings.TrimPrefix(r, "refs/tags/")})
-		case strings.HasPrefix(r, "refs/remotes/"):
-			out = append(out, deletedRef{kind: refRemote, name: strings.TrimPrefix(r, "refs/remotes/")})
+		if j == len(cur) || cur[j] != r {
+			out = append(out, r)
 		}
 	}
+	return out
+}
+
+// refNamespace is the part of a ref's name that says its kind, like
+// "refs/heads/".
+func refNamespace(r string) string {
+	for _, ns := range []string{"refs/heads/", "refs/tags/", "refs/remotes/"} {
+		if strings.HasPrefix(r, ns) {
+			return ns
+		}
+	}
+	return ""
+}
+
+// deletedRef turns a ref's full name into what's shown for its deletion.
+func toDeletedRef(r string) deletedRef {
+	ns := refNamespace(r)
+	kind := map[string]refKind{"refs/heads/": refBranch, "refs/tags/": refTag, "refs/remotes/": refRemote}[ns]
+	return deletedRef{kind: kind, name: strings.TrimPrefix(r, ns)}
+}
+
+// summarize keeps up to maxDeletionsShown deletions, or makes them one
+// summary.
+func summarize(out []deletedRef) []deletedRef {
 	if len(out) <= maxDeletionsShown {
 		return out
 	}
@@ -97,10 +121,47 @@ func deletedRefs(prev, cur []string) []deletedRef {
 	return []deletedRef{sum}
 }
 
+// deletedRefs lists the refs in prev that are missing from cur, both sorted.
+func deletedRefs(prev, cur []string) []deletedRef {
+	var out []deletedRef
+	for _, r := range goneRefs(prev, cur) {
+		out = append(out, toDeletedRef(r))
+	}
+	return summarize(out)
+}
+
+// refRename is a ref that went away while another of the same kind showed
+// up pointing to the same thing: git branch -m, or a remote renamed.
+type refRename struct{ from, to string }
+
+// findRenames pairs the refs that went away between two lookups with those
+// that showed up, when they point to the same object.
+func findRenames(prev, info projectContext) (renames []refRename, gone []string) {
+	added := goneRefs(info.refs, prev.refs)
+	used := make([]bool, len(added))
+	for _, r := range goneRefs(prev.refs, info.refs) {
+		paired := false
+		for i, n := range added {
+			if !used[i] && refNamespace(n) == refNamespace(r) && prev.oids[r] != "" && prev.oids[r] == info.oids[n] {
+				used[i], paired = true, true
+				renames = append(renames, refRename{r, n})
+				break
+			}
+		}
+		if !paired {
+			gone = append(gone, r)
+		}
+	}
+	return renames, gone
+}
+
 // deletion is a deleted ref's turn in the branch's place, with its
-// timeline.
+// timeline; or a renamed branch's, when renamed is set.
 type deletion struct {
 	ref     deletedRef
+	renamed string   // the new name of a renamed branch
+	rename  pathRoll // its old name rolling into the new one
+	burst   bool     // a renamed branch's sparks were fired
 	current string   // the branch it replaces for a moment
 	in      pathRoll // the current branch's name rolling into the deleted one
 	back    pathRoll // and the current one rising back
@@ -125,6 +186,32 @@ func newDeletion(ref deletedRef, current string, start time.Time) deletion {
 	return d
 }
 
+// newRename lays out the timeline of a branch renamed from old to new,
+// starting at start, on the branch current. It plays like a checkout in the
+// branch's place: current rolls into old, old into new as the logo turns,
+// and after a moment new back into current.
+func newRename(old, new, current string, start time.Time) deletion {
+	d := deletion{ref: deletedRef{kind: refBranch, name: old}, renamed: new, current: current}
+	d.in = newPathRoll([]rune(current), []rune(old), start)
+	d.rename = newPathRoll([]rune(old), []rune(new), start.Add(d.in.duration()+renameBefore))
+	d.back = newPathRoll([]rune(new), []rune(current), d.rename.start.Add(d.rename.duration()+renameHold))
+	d.end = d.back.start.Add(d.back.duration())
+	d.trailAt, d.fallAt = d.end, d.end // no trail or fall
+	return d
+}
+
+// spin is the logo's angle in a rename's quarter turn.
+func (d *deletion) spin(now time.Time) float64 {
+	if d.renamed == "" {
+		return 0
+	}
+	p := float64(now.Sub(d.rename.start)) / float64(branchSpin)
+	if p <= 0 || p >= 1 {
+		return 0
+	}
+	return easeOutCubic(p) * math.Pi / 2
+}
+
 // stagger is the delay between two letters' falls.
 func (d *deletion) stagger() time.Duration {
 	return min(deleteStagger, deleteMaxStagger/time.Duration(max(1, len(d.sparked)-1)))
@@ -138,13 +225,18 @@ func (d *deletion) letterFall(i int, now time.Time) float64 {
 
 // iconBlend is how red the logo is, 0 to 1.
 func (d *deletion) iconBlend(now time.Time) float64 {
+	if d.renamed != "" {
+		return 0 // a rename is no loss
+	}
 	in := float64(now.Sub(d.in.start)) / float64(deleteIconBlend)
 	out := 1 - float64(now.Sub(d.back.start))/float64(deleteIconBlend)
 	return math.Max(0, math.Min(1, math.Min(in, out)))
 }
 
-// queueDeletions finds what was deleted between two lookups of the same
-// repository and queues it to play.
+// queueDeletions finds the branches and tags deleted or renamed between
+// two lookups of the same repository and queues them to play. Renaming the
+// current branch plays like a checkout instead (see trackBranch), and
+// renamed tags and remote branches don't play at all.
 func (g *Game) queueDeletions(prev, info projectContext, now time.Time) {
 	if prev.gitDir == "" || prev.gitDir != info.gitDir || prev.refs == nil || info.refs == nil || !g.cfg.Animation.Enabled {
 		return
@@ -154,7 +246,21 @@ func (g *Game) queueDeletions(prev, info projectContext, now time.Time) {
 	if n := len(a.deletions); n > 0 {
 		start = latest(start, a.deletions[n-1].end)
 	}
-	for _, ref := range deletedRefs(prev.refs, info.refs) {
+	renames, gone := findRenames(prev, info)
+	for _, r := range renames {
+		from, to := toDeletedRef(r.from), toDeletedRef(r.to)
+		if from.kind != refBranch || from.name == prev.branch && to.name == info.branch {
+			continue
+		}
+		d := newRename(from.name, to.name, info.branch, start)
+		a.deletions = append(a.deletions, d)
+		start = d.end
+	}
+	var deleted []deletedRef
+	for _, r := range gone {
+		deleted = append(deleted, toDeletedRef(r))
+	}
+	for _, ref := range summarize(deleted) {
 		d := newDeletion(ref, info.branch, start)
 		a.deletions = append(a.deletions, d)
 		start = d.end
@@ -200,7 +306,12 @@ func (g *Game) deletionCols(now time.Time) int {
 	if d == nil {
 		return 0
 	}
-	return max(0, len(d.sparked)-len([]rune(d.current)))
+	return max(0, d.width()-len([]rune(d.current)))
+}
+
+// width is how many cells d's names take at most.
+func (d *deletion) width() int {
+	return max(len([]rune(d.ref.label())), len([]rune(d.renamed)), len([]rune(d.current)))
 }
 
 // stepDeletion bursts the sparks of letters that just finished falling,
@@ -210,6 +321,16 @@ func (g *Game) stepDeletion(now time.Time) {
 	d := a.activeDeletion(now)
 	if d == nil || g.faces == nil || !g.cfg.Animation.Particles {
 		return
+	}
+	// A branch renamed to a name not seen before sparks like a new one.
+	if d.renamed != "" && !d.burst && !now.Before(d.rename.start) {
+		d.burst = true
+		if a.seen != nil && !a.seen[d.renamed] && a.sparks != nil {
+			a.sparks.burstAt(branchNewSparks, 0, 0)
+		}
+		if a.seen != nil {
+			a.seen[d.renamed] = true
+		}
 	}
 	if a.redSparks == nil {
 		a.redSparks = newSparks(uint64(now.UnixNano()))
@@ -240,7 +361,20 @@ func (g *Game) drawDeletionName(dst *ebiten.Image, d *deletion, x, y float64, co
 	red := g.theme.Error
 	label := []rune(truncate(d.ref.label(), cols))
 	a.delName, a.delY = x, y
-	width := min(cols, max(len(label), len([]rune(d.current))))
+	width := min(cols, d.width())
+
+	if d.renamed != "" {
+		// current → old name → new name (as the logo turns) → current.
+		switch {
+		case now.Before(d.rename.start):
+			g.drawRoll(dst, d.in, x, y, cols, badgeText, alpha, now)
+		case now.Before(d.back.start):
+			g.drawRoll(dst, d.rename, x, y, cols, badgeText, alpha, now)
+		default:
+			g.drawRoll(dst, d.back, x, y, cols, badgeText, alpha, now)
+		}
+		return width
+	}
 
 	if now.Before(d.trailAt) {
 		// The current branch rolls into the deleted one.
