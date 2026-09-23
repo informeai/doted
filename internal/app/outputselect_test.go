@@ -124,7 +124,9 @@ func TestCopyPrefersOutputSelection(t *testing.T) {
 
 	// Pasted into the one-line input, the line break becomes a space.
 	g.editor.Reset()
+	settle(t, g, func() bool { return fake(g).get() != "" })
 	g.paste()
+	settle(t, g, func() bool { return !g.editor.Empty() })
 	if g.editor.Text() != "boom at main.go:12" {
 		t.Fatalf("pasted %q", g.editor.Text())
 	}

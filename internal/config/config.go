@@ -30,7 +30,12 @@ type Config struct {
 	Scrollback Scrollback `toml:"scrollback"`
 	Shell      Shell      `toml:"shell"`
 	History    History    `toml:"history"`
+	Clipboard  Clipboard  `toml:"clipboard"`
 	Colors     Colors     `toml:"colors"`
+}
+
+type Clipboard struct {
+	System bool `toml:"system"`
 }
 
 type History struct {

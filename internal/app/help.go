@@ -30,7 +30,7 @@ var helpKeys = []struct{ keys, desc string }{
 	{"tab · →", "accept the suggestion shown after the cursor"},
 	{"shift+←→", "select text (also shift+home/end); typing replaces it"},
 	{"mouse drag", "select output (double-click a word, triple-click a line)"},
-	{"cmd+c · x · v", "copy · cut · paste (ctrl+shift+c/x/v on linux/windows)"},
+	{"cmd+c · x · v", "copy · cut · paste, with other apps too (ctrl+shift+c/x/v on linux/windows)"},
 	{"ctrl+y", "paste back what ctrl+w or ctrl+u deleted"},
 	{"ctrl+c", "interrupt the running command, or discard the line"},
 	{"ctrl+b", "send the running command to the background"},

@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,12 +12,40 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 
+	"github.com/informeai/doted/internal/clipboard"
 	"github.com/informeai/doted/internal/jobs"
 )
 
-// doted keeps its own clipboard: text copied or cut from the input line, and
-// what Ctrl+W and Ctrl+U delete (as in readline, where Ctrl+Y brings it
-// back). It doesn't reach other apps yet: Ebiten has no clipboard API.
+// Copy and paste use the system clipboard, so text goes to and comes from
+// other apps. doted also keeps its own copy: it's what Ctrl+Y brings back
+// (with what Ctrl+W and Ctrl+U delete, as in readline), and what Cmd+V falls
+// back to when the system clipboard can't be reached. Talking to the system
+// can take a moment (it runs a helper on macOS and Linux), so it happens in
+// the background and never holds up a frame.
+
+// systemClipboard is the system clipboard; tests swap in a fake.
+type systemClipboard interface {
+	Read(ctx context.Context) (string, error)
+	Write(ctx context.Context, text string) error
+}
+
+type realClipboard struct{}
+
+func (realClipboard) Read(ctx context.Context) (string, error) { return clipboard.Read(ctx) }
+func (realClipboard) Write(ctx context.Context, text string) error {
+	return clipboard.Write(ctx, text)
+}
+
+const clipboardTimeout = 2 * time.Second
+
+// clipboardEvent is the outcome of a background clipboard call, handled by
+// Update: a read to paste somewhere, or a failed write to report.
+type clipboardEvent struct {
+	read   bool
+	text   string
+	err    error
+	target *jobs.Job // where a read pastes: a job, or the input line if nil
+}
 
 const flashDuration = 1500 * time.Millisecond
 
@@ -58,6 +88,7 @@ func (g *Game) copySelection() {
 	}
 	g.clipboard = text
 	g.flash("copied " + describeText(text))
+	g.writeSystemClipboard(text)
 }
 
 func (g *Game) cutSelection() {
@@ -68,28 +99,94 @@ func (g *Game) cutSelection() {
 	}
 	g.clipboard = text
 	g.flash("cut " + describeText(text))
+	g.writeSystemClipboard(text)
 	g.typed()
 }
 
-// paste types the clipboard at the cursor, replacing the selection.
-func (g *Game) paste() {
-	if g.clipboard == "" {
-		g.flash("clipboard is empty")
+// paste pastes the system clipboard at the input's cursor (Cmd+V),
+// replacing the selection, once it has been read.
+func (g *Game) paste() { g.readSystemClipboard(nil) }
+
+// pasteTo pastes the system clipboard into a running job, once read.
+func (g *Game) pasteTo(j *jobs.Job) { g.readSystemClipboard(j) }
+
+// yank pastes doted's own clipboard at the cursor (Ctrl+Y): the last text
+// copied, cut or deleted with Ctrl+W or Ctrl+U.
+func (g *Game) yank() { g.pasteText(nil, g.clipboard) }
+
+func (g *Game) writeSystemClipboard(text string) {
+	if !g.cfg.Clipboard.System {
 		return
 	}
-	g.editor.Insert([]rune(singleLine(g.clipboard))...)
-	g.typed()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), clipboardTimeout)
+		defer cancel()
+		if err := g.system.Write(ctx, text); err != nil {
+			g.clipboardEvents <- clipboardEvent{err: err}
+		}
+	}()
 }
 
-// pasteTo types the clipboard into a running job, as if typed on its
-// keyboard.
-func (g *Game) pasteTo(j *jobs.Job) {
-	if g.clipboard == "" {
+func (g *Game) readSystemClipboard(target *jobs.Job) {
+	if !g.cfg.Clipboard.System {
+		g.pasteText(target, g.clipboard)
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), clipboardTimeout)
+		defer cancel()
+		text, err := g.system.Read(ctx)
+		g.clipboardEvents <- clipboardEvent{read: true, text: text, err: err, target: target}
+	}()
+}
+
+// handleClipboardEvents finishes background clipboard calls. Run by Update.
+func (g *Game) handleClipboardEvents() {
+	for {
+		select {
+		case ev := <-g.clipboardEvents:
+			switch {
+			case !ev.read:
+				g.flash("copied inside doted only: " + clipboardError(ev.err))
+			case ev.err != nil:
+				g.flash("system clipboard: " + clipboardError(ev.err) + " · pasted doted's own")
+				g.pasteText(ev.target, g.clipboard)
+			default:
+				g.pasteText(ev.target, ev.text)
+			}
+		default:
+			return
+		}
+	}
+}
+
+func clipboardError(err error) string {
+	if errors.Is(err, clipboard.ErrUnavailable) {
+		return "no clipboard tool (install wl-clipboard, xclip or xsel)"
+	}
+	return err.Error()
+}
+
+// pasteText pastes text into target, a running job, or the input line when
+// target is nil. A paste that arrives after the keyboard moved elsewhere is
+// dropped rather than landing somewhere unexpected.
+func (g *Game) pasteText(target *jobs.Job, text string) {
+	if text == "" {
 		g.flash("clipboard is empty")
 		return
 	}
-	j.Paste(g.clipboard)
-	g.scroll = 0
+	if target != nil {
+		if !target.Running() || (target != g.attached && target != g.viewing) {
+			return
+		}
+		target.Paste(text)
+		g.scroll = 0
+	} else {
+		if g.attached != nil || g.viewing != nil {
+			return
+		}
+		g.editor.Insert([]rune(singleLine(text))...)
+	}
 	g.touch()
 	g.typed()
 }

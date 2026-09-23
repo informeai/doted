@@ -198,10 +198,11 @@ func TestHelpHintOnStatusLine(t *testing.T) {
 
 func TestPasteIntoRunningCommand(t *testing.T) {
 	g := newTestGame(t)
-	g.clipboard = "doted"
+	fake(g).text = "doted" // on the system clipboard
 	run(g, `read name; echo "got:$name"`)
 	j := g.attached
 	g.pasteTo(j)
+	awaitClipboard(t, g)
 	j.Write([]byte("\r"))
 	tickUntil(t, g, func() bool { return g.attached == nil })
 	if !strings.Contains(mainText(g), "got:doted") {
@@ -224,5 +225,18 @@ func TestFullScreenTakesTheOutputArea(t *testing.T) {
 	tickUntil(t, g, func() bool { return g.attached == nil })
 	if g.screenJob() != nil {
 		t.Fatal("the grid should give way to the history once the program ends")
+	}
+}
+
+// A paste read in the background lands only where the keyboard still is.
+func TestLatePasteIsDropped(t *testing.T) {
+	g := newTestGame(t)
+	fake(g).text = "late"
+	g.paste()        // for the input line...
+	run(g, "read x") // ...but a command takes the keyboard first
+	defer g.jobs.KillAll()
+	awaitClipboard(t, g)
+	if !g.editor.Empty() {
+		t.Fatalf("a late paste landed in the input: %q", g.editor.Text())
 	}
 }

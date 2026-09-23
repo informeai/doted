@@ -54,27 +54,29 @@ type Game struct {
 	viewing  *jobs.Job // shown full screen in the job view
 	panel    panel     // the jobs list or the help
 
-	scroll      int              // visual rows scrolled up from the bottom
-	sparks      *sparks          // fired from the prompt bar while typing
-	historyPath string           // where typed commands are saved
-	window      windowTracker    // size and place of the window, remembered across runs
-	definitions chan definitions // the shell's startup aliases and functions, once loaded
-	path        pathRoll         // the directory on the status line, rolling after a cd
-	lastInput   time.Time        // keeps the cursor solid while typing
-	bounceStart time.Time        // when the dot cursor started hopping; see bounceElapsed
-	chars       []rune
-	ptyCols     int // terminal size last given to the jobs
-	ptyRows     int
-	lookups     map[string]lookup // cached command lookups; see commandcheck.go
-	suggest     suggestCache      // the autosuggestion; see suggest.go
-	zap         zap               // the bolt run after accepting a suggestion; see zap.go
-	outSel      outputSelection   // text selected in the output with the mouse; see outputselect.go
-	cursorShape ebiten.CursorShapeType
-	clipboard   string    // doted's own clipboard; see clipboard.go
-	flashText   string    // short status-line message, e.g. "copied"
-	flashUntil  time.Time // when flashText goes away
-	quitArmed   bool      // exit was asked once while jobs were still running
-	quit        bool
+	scroll          int                 // visual rows scrolled up from the bottom
+	sparks          *sparks             // fired from the prompt bar while typing
+	historyPath     string              // where typed commands are saved
+	window          windowTracker       // size and place of the window, remembered across runs
+	system          systemClipboard     // the system clipboard; see clipboard.go
+	clipboardEvents chan clipboardEvent // results of background clipboard calls
+	definitions     chan definitions    // the shell's startup aliases and functions, once loaded
+	path            pathRoll            // the directory on the status line, rolling after a cd
+	lastInput       time.Time           // keeps the cursor solid while typing
+	bounceStart     time.Time           // when the dot cursor started hopping; see bounceElapsed
+	chars           []rune
+	ptyCols         int // terminal size last given to the jobs
+	ptyRows         int
+	lookups         map[string]lookup // cached command lookups; see commandcheck.go
+	suggest         suggestCache      // the autosuggestion; see suggest.go
+	zap             zap               // the bolt run after accepting a suggestion; see zap.go
+	outSel          outputSelection   // text selected in the output with the mouse; see outputselect.go
+	cursorShape     ebiten.CursorShapeType
+	clipboard       string    // doted's own clipboard; see clipboard.go
+	flashText       string    // short status-line message, e.g. "copied"
+	flashUntil      time.Time // when flashText goes away
+	quitArmed       bool      // exit was asked once while jobs were still running
+	quit            bool
 
 	// Set by Layout / Draw, read by Update.
 	scale      float64
@@ -106,19 +108,21 @@ func New(s Settings, configPath string) (*Game, error) {
 	}
 	sb := terminal.NewScrollback(s.Config.Scrollback.Lines)
 	g := &Game{
-		configPath:  configPath,
-		reloads:     make(chan reload, 1),
-		scrollback:  sb,
-		parser:      terminal.NewParser(sb),
-		session:     shell.NewSession(dir),
-		jobs:        jobs.NewManager(s.Config.Scrollback.Lines),
-		scale:       1,
-		cols:        80,
-		outputRows:  24,
-		sparks:      newSparks(uint64(time.Now().UnixNano())),
-		historyPath: history.Path(),
-		window:      windowTracker{path: winstate.Path()},
-		definitions: make(chan definitions, 1),
+		configPath:      configPath,
+		reloads:         make(chan reload, 1),
+		scrollback:      sb,
+		parser:          terminal.NewParser(sb),
+		session:         shell.NewSession(dir),
+		jobs:            jobs.NewManager(s.Config.Scrollback.Lines),
+		scale:           1,
+		cols:            80,
+		outputRows:      24,
+		sparks:          newSparks(uint64(time.Now().UnixNano())),
+		historyPath:     history.Path(),
+		window:          windowTracker{path: winstate.Path()},
+		system:          realClipboard{},
+		clipboardEvents: make(chan clipboardEvent, 8),
+		definitions:     make(chan definitions, 1),
 	}
 	g.apply(s)
 	g.loadHistory()
@@ -248,6 +252,7 @@ func (g *Game) flushNotices() {
 func (g *Game) Update() error {
 	g.handleReloads()
 	g.handleDefinitions()
+	g.handleClipboardEvents()
 	g.handleMouse(time.Now())
 	g.jobs.Poll(time.Now(), g.handleJobEvent)
 	g.flushNotices()
@@ -371,7 +376,7 @@ func (g *Game) handleKeyboard() {
 		case repeating(ebiten.KeyW):
 			g.kill(g.editor.DeleteWordBackward())
 		case inpututil.IsKeyJustPressed(ebiten.KeyY):
-			g.paste() // readline's yank
+			g.yank() // readline's yank: doted's own clipboard
 		case inpututil.IsKeyJustPressed(ebiten.KeyA):
 			g.editor.Home(shift)
 		case inpututil.IsKeyJustPressed(ebiten.KeyE):

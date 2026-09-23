@@ -22,6 +22,7 @@ func newTestGame(t *testing.T) *Game {
 		t.Fatal(err)
 	}
 	t.Cleanup(g.session.Close)
+	g.system = &fakeClipboard{} // never the user's real clipboard
 	return g
 }
 

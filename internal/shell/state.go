@@ -275,5 +275,8 @@ func definedNames(path string) map[string]bool {
 			names[m[1]] = true // helpers starting with _ aren't meant to be typed
 		}
 	}
+	if sc.Err() != nil {
+		return names // a line too long to read: keep the names found before it
+	}
 	return names
 }

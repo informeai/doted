@@ -57,6 +57,12 @@ lines = 10000
 save = true
 lines = 10000
 
+[clipboard]
+# Copy and paste through the system clipboard, to and from other apps. When
+# false, they stay inside doted. On Linux this needs wl-clipboard (Wayland)
+# or xclip or xsel (X11).
+system = true
+
 [shell]
 # Program used to run commands as `<program> -c "<command>"`. Empty uses $SHELL.
 program = ""

@@ -38,6 +38,7 @@ Maintainer: informeai <contato.informeai@gmail.com>
 Homepage: https://github.com/informeai/doted
 Installed-Size: $(du -sk "$pkg/usr" | cut -f1)
 Depends: libgl1, libx11-6, libxcursor1, libxext6, libxi6, libxinerama1, libxrandr2
+Recommends: wl-clipboard | xclip | xsel
 Description: Terminal emulator rendered with Ebitengine
  doted runs commands in a pseudo-terminal with the input line at the bottom
  and the output above it. Long-running commands can be sent to the

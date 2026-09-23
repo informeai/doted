@@ -71,7 +71,7 @@ A emulação usa o [`charmbracelet/x/vt`](https://github.com/charmbracelet/x/tre
 | Ctrl+Y | cola de volta o que o Ctrl+U/Ctrl+W apagou | envia ao programa |
 | PgUp / PgDn, roda do mouse | rola o histórico | rola o histórico |
 
-Para copiar a saída de um comando, arraste o mouse sobre ela: o trecho ganha um fundo na cor de destaque, e arrastar além do topo ou da base rola o histórico. A seleção fica presa ao texto, então não se desloca quando chega saída nova; Esc ou um clique a desfazem. A área de transferência é do próprio doted: guarda o que você copia, recorta ou apaga com Ctrl+U/Ctrl+W, mas ainda não troca texto com outros apps, porque o Ebitengine não tem acesso à área de transferência do sistema. Ao copiar ou colar, a barra de status confirma a ação por um instante.
+Para copiar a saída de um comando, arraste o mouse sobre ela: o trecho ganha um fundo na cor de destaque, e arrastar além do topo ou da base rola o histórico. A seleção fica presa ao texto, então não se desloca quando chega saída nova; Esc ou um clique a desfazem. Copiar, recortar e colar usam a área de transferência do sistema, então o texto vai e vem entre o doted e outros apps (no macOS pelo `pbcopy`/`pbpaste`, no Linux pelo `wl-copy`/`wl-paste`, `xclip` ou `xsel`, e no Windows pela API do sistema). Ao colar na linha de entrada, quebras de linha viram espaços, então um colar nunca executa um comando. O Ctrl+Y, como no bash, cola de volta o que o Ctrl+U/Ctrl+W apagou, sem mexer na área do sistema. Se o sistema não responder (no Linux sem nenhuma dessas ferramentas, por exemplo), o doted usa a própria área e avisa. Ao copiar ou colar, a barra de status confirma a ação por um instante.
 
 No macOS, Cmd+←/→ vai para o início/fim da linha, Cmd+Backspace apaga até o início e Option+Backspace apaga a palavra anterior.
 
@@ -157,6 +157,7 @@ EDITOR = "nvim"
 | `[animation]` | `enabled` (liga ou desliga todas as animações), `fade_in_ms`, `particles` (as faíscas da barra) |
 | `[scrollback]` | `lines` |
 | `[history]` | `save` (guardar os comandos entre sessões), `lines` |
+| `[clipboard]` | `system` (copiar e colar pela área de transferência do sistema; com `false`, fica tudo dentro do doted) |
 | `[shell]` | `program`, `[shell.env]` |
 | `[colors]` | `background`, `foreground`, `muted`, `accent`, `error`, `border`, `cursor` |
 | `[colors.normal]` / `[colors.bright]` | `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white` |
@@ -246,5 +247,5 @@ go test -tags smoke ./internal/app/
 
 - O cursor só se move dentro da linha atual; sequências que movem o cursor para outras linhas são ignoradas.
 - Jobs em background não são pausados (não há Ctrl+Z/SIGTSTP): eles continuam rodando.
-- A área de transferência é só do doted: copiar e colar funcionam dentro dele, mas ainda não trocam texto com outros apps (o Ebitengine não expõe a área de transferência do sistema).
+- No Linux, a área de transferência do sistema precisa do `wl-clipboard` (Wayland) ou do `xclip`/`xsel` (X11); o `.deb` recomenda um deles.
 - Caracteres largos (CJK, emoji) desalinham a grade, e a fonte Go Mono tem cobertura limitada de símbolos.
