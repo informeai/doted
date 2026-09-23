@@ -167,6 +167,8 @@ packaging/linux/build-deb.sh 0.1.0 dist amd64      # precisa de dpkg-deb
 pwsh packaging/windows/build-msi.ps1 -Version 0.1.0 # precisa do WiX 5 (dotnet tool install --global wix --version 5.0.2)
 ```
 
+O ícone do app é desenhado por `tools/icongen`, que é a única fonte da geometria. O `go generate ./assets/icon` gera a partir dele o SVG, os PNGs do Linux, o `.ico`, o `.icns` do macOS e o `rsrc_windows_amd64.syso`, que embute o ícone no `doted.exe`. Os arquivos gerados ficam no repositório, e o CI falha se estiverem desatualizados.
+
 Observações:
 
 - O `.app` usa assinatura ad hoc, sem Apple Developer ID nem notarização. Na primeira abertura, o macOS bloqueia o app: clique com o botão direito em `doted.app` e escolha **Abrir**.
@@ -180,6 +182,8 @@ Observações:
 main.go                  flags, carga da configuração e janela do Ebitengine
 .github/workflows/ci.yml testes nos três sistemas, pacotes e release em tags
 packaging/               scripts do .dmg (macos/), .deb (linux/) e .msi (windows/)
+assets/icon/             ícone gerado em todos os formatos (SVG, PNG, .ico, .icns)
+tools/icongen/           desenha o ícone e gera esses arquivos (go generate)
 internal/
   app/                   o "jogo" do Ebitengine
     app.go               Update: teclado, rolagem, comandos internos

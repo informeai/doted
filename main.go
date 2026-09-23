@@ -8,6 +8,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 
+	"github.com/informeai/doted/assets/icon"
 	"github.com/informeai/doted/internal/app"
 	"github.com/informeai/doted/internal/config"
 )
@@ -48,6 +49,10 @@ func main() {
 	ebiten.SetWindowTitle("doted")
 	ebiten.SetWindowSize(settings.Config.Window.Width, settings.Config.Window.Height)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+	// Title bar and taskbar on Windows and Linux; macOS uses the bundle's icon.
+	if imgs, err := icon.Images(); err == nil {
+		ebiten.SetWindowIcon(imgs)
+	}
 
 	if err := ebiten.RunGame(g); err != nil {
 		fmt.Fprintln(os.Stderr, err)

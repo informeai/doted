@@ -12,7 +12,7 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 app="$work/dmg/doted.app"
-mkdir -p "$app/Contents/MacOS"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 
 # Ebiten and creack/pty don't need cgo on macOS, so both architectures
 # cross-compile from any Mac.
@@ -22,6 +22,7 @@ for arch in arm64 amd64; do
 done
 lipo -create -output "$app/Contents/MacOS/doted" "$work/doted-arm64" "$work/doted-amd64"
 sed "s/@VERSION@/$version/g" "$root/packaging/macos/Info.plist" >"$app/Contents/Info.plist"
+cp "$root/assets/icon/doted.icns" "$app/Contents/Resources/doted.icns"
 
 # lipo drops the linker's signature, and Apple Silicon refuses to run
 # unsigned code, so sign ad hoc (no Apple Developer ID involved).

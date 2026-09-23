@@ -8,6 +8,8 @@
 	<string>doted</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.informeai.doted</string>
+	<key>CFBundleIconFile</key>
+	<string>doted</string>
 	<key>CFBundleExecutable</key>
 	<string>doted</string>
 	<key>CFBundlePackageType</key>

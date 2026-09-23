@@ -20,6 +20,10 @@ mkdir -p "$pkg/DEBIAN" "$pkg/usr/bin" "$pkg/usr/share/applications" "$pkg/usr/sh
 (cd "$root" && CGO_ENABLED=0 GOOS=linux GOARCH=$arch \
 	go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$pkg/usr/bin/doted" .)
 install -m 0644 "$root/packaging/linux/doted.desktop" "$pkg/usr/share/applications/doted.desktop"
+for size in 16 24 32 48 64 128 256 512; do
+	install -D -m 0644 "$root/assets/icon/png/doted-$size.png" "$pkg/usr/share/icons/hicolor/${size}x${size}/apps/doted.png"
+done
+install -D -m 0644 "$root/assets/icon/doted.svg" "$pkg/usr/share/icons/hicolor/scalable/apps/doted.svg"
 install -m 0644 "$root/README.md" "$pkg/usr/share/doc/doted/README.md"
 
 # Depends lists the libraries Ebiten loads at runtime, since dpkg can't see

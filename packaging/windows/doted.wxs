@@ -2,7 +2,7 @@
 <!--
   MSI package for doted, built with WiX Toolset 5:
 
-    wix build -arch x64 -d Version=1.2.3 -d BinDir=path\to\bin doted.wxs -o doted.msi
+    wix build -arch x64 -d Version=1.2.3 -d BinDir=path\to\bin -d IconFile=path\to\doted.ico doted.wxs -o doted.msi
 
   UpgradeCode must never change: it is how Windows recognizes a newer doted
   package as an upgrade of an installed one.
@@ -15,6 +15,10 @@
            Compressed="yes">
     <MajorUpgrade DowngradeErrorMessage="A newer version of doted is already installed." />
     <MediaTemplate EmbedCab="yes" />
+
+    <!-- Shown in Settings > Apps and on the Start menu shortcut. -->
+    <Icon Id="DotedIcon" SourceFile="$(var.IconFile)" />
+    <Property Id="ARPPRODUCTICON" Value="DotedIcon" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="doted">
@@ -30,6 +34,7 @@
                   Name="doted"
                   Description="Terminal emulator with background jobs"
                   Target="[INSTALLFOLDER]doted.exe"
+                  Icon="DotedIcon"
                   WorkingDirectory="INSTALLFOLDER" />
         <!-- A shortcut can't be a component's key path; this value is. -->
         <RegistryValue Root="HKLM" Key="Software\informeai\doted" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />

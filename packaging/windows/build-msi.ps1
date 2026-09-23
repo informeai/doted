@@ -29,7 +29,10 @@ try {
     Pop-Location
 
     $msi = Join-Path (Resolve-Path $OutDir) "doted-$Version-windows-x64.msi"
-    wix build -arch x64 -d "Version=$Version" -d "BinDir=$work" (Join-Path $root "packaging/windows/doted.wxs") -o $msi
+    # doted.exe already carries the icon through rsrc_windows_amd64.syso,
+    # which go build links in automatically.
+    $icon = Join-Path $root "assets/icon/doted.ico"
+    wix build -arch x64 -d "Version=$Version" -d "BinDir=$work" -d "IconFile=$icon" (Join-Path $root "packaging/windows/doted.wxs") -o $msi
     if ($LASTEXITCODE -ne 0) { throw "wix build failed" }
     Write-Output $msi
 }

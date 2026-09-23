@@ -29,6 +29,15 @@ jobs:
           go-version-file: go.mod
       - run: go vet ./...
       - run: go test -race ./...
+      - name: Check the generated icons are up to date
+        if: runner.os == 'Linux'
+        run: |
+          go generate ./assets/icon
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git status --short
+            echo "::error::Icons are out of date: run 'go generate ./assets/icon' and commit the result"
+            exit 1
+          fi
 
   # Packages are versioned from the tag (v1.2.3 -> 1.2.3); other builds get
   # 0.0.<run number>, which every package format accepts.
@@ -70,6 +79,7 @@ jobs:
           app="$mount/doted.app"
           lipo -archs "$app/Contents/MacOS/doted"
           codesign --verify --verbose "$app"
+          test -s "$app/Contents/Resources/doted.icns"
           "$app/Contents/MacOS/doted" -version | grep -F "$VERSION"
           hdiutil detach "$mount"
       - uses: actions/upload-artifact@v7
@@ -96,6 +106,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb ./dist/*.deb
           dpkg -s doted | grep -E '^(Version|Depends):'
+          test -f /usr/share/icons/hicolor/256x256/apps/doted.png
           doted -version | grep -F "$VERSION"
           # doted keeps running until closed: timeout's exit code 124 means
           # it started and was still up after 5 seconds.
