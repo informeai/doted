@@ -37,12 +37,17 @@ go build -o doted .
 
 Cada comando roda em `$SHELL -c` dentro de um pseudo-terminal, no diretório atual do doted. Enquanto um comando está rodando, o teclado vai direto para ele, então prompts de senha, perguntas `y/n` e REPLs como `python3` funcionam.
 
+Enquanto você digita, a palavra do comando muda de cor: na cor de destaque se for um comando interno do doted, verde se existir no sistema (no `PATH`, um caminho executável como `./build.sh` ou um comando embutido do shell como `echo` e `export`) e vermelha se não existir. O `PATH` consultado é o mesmo que os comandos recebem.
+
+Também como no fish, uma sugestão aparece apagada depois do cursor enquanto você digita, e Tab (ou → no fim da linha) aceita. Ela vem, nesta ordem: do comando mais recente do histórico que começa com o que você digitou; do nome de um comando (do doted, embutido do shell ou do `PATH`); ou de um arquivo ou pasta, no último argumento (`cd Pro` → `cd Projects/`). Entre nomes de comando, o mais curto vence; no empate, os do doted vêm primeiro. Ao aceitar com Tab, a bolinha do cursor some e um sublinhado elétrico corre sob o texto até o fim do comando completado, onde a bolinha reaparece com algumas faíscas (só com o cursor `dot` e as animações ligadas).
+
 ### Atalhos
 
 | Tecla | Na entrada | Com comando rodando |
 | --- | --- | --- |
 | Enter | executa a linha | envia Enter ao programa |
 | ↑ / ↓ | navega no histórico | envia as setas ao programa |
+| Tab, → (no fim da linha) | aceita a sugestão mostrada depois do cursor | envia ao programa |
 | Shift+←/→, Shift+Home/End | seleciona texto, marcado com pontinhos acima dos caracteres; digitar ou apagar substitui a seleção | — |
 | Cmd+C / Cmd+X / Cmd+V (Ctrl+Shift+C/X/V no Linux e Windows) | copia, recorta e cola a seleção | cola no programa |
 | Ctrl+C | descarta a linha | interrompe o programa (SIGINT) |

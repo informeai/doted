@@ -142,7 +142,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawPrompt(screen, pad, inputTop, g.theme.Muted, 1)
 		g.drawText(screen, truncate(inputHint, g.cols-promptLen), pad+promptW, inputTop, g.theme.Muted, dimAlpha)
 	} else {
-		selFrom, selTo := g.selectionCells(promptLen)
+		colorAt := g.inputColors(promptLen, now)
 		for i, row := range inputRows {
 			y := inputTop + float64(i)*f.lineH
 			from := 0
@@ -150,10 +150,17 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				g.drawPrompt(screen, pad, y, g.promptColor(now), 1)
 				from = promptLen
 			}
-			g.drawInputRow(screen, row, from, i*g.cols, pad, y, selFrom, selTo)
+			g.drawInputRow(screen, row, from, i*g.cols, pad, y, colorAt)
 		}
 		g.drawSelection(screen, pad, inputTop, promptLen)
-		g.drawCursor(screen, pad+float64(cursorCol)*f.cellW, inputTop+float64(cursorRow)*f.lineH, runeAt(inputRows[cursorRow], cursorCol), now)
+		// The suggestion continues the line, faded, up to the end of the row.
+		if suffix := g.suggestion(now); suffix != "" {
+			g.drawText(screen, truncate(suffix, g.cols-cursorCol), pad+float64(cursorCol)*f.cellW, inputTop+float64(cursorRow)*f.lineH, g.theme.Muted, dimAlpha)
+		}
+		// Right after a Tab completion, the zap stands in for the cursor.
+		if !g.drawZap(screen, pad, inputTop, now) {
+			g.drawCursor(screen, pad+float64(cursorCol)*f.cellW, inputTop+float64(cursorRow)*f.lineH, runeAt(inputRows[cursorRow], cursorCol), now)
+		}
 	}
 
 	// Sparks fly from the bar over everything else in the input box.
@@ -202,19 +209,33 @@ func (g *Game) selectionCells(promptLen int) (from, to int) {
 	return promptLen + start, promptLen + end
 }
 
-// drawInputRow draws row's runes from column from on. rowCell is the cell
-// the row starts at; the cells in [selFrom, selTo) are selected and drawn
-// in the accent color, the rest in the text color.
-func (g *Game) drawInputRow(dst *ebiten.Image, row []rune, from, rowCell int, x, y float64, selFrom, selTo int) {
-	selected := func(c int) bool { return rowCell+c >= selFrom && rowCell+c < selTo }
-	for c := from; c < len(row); {
-		end := c + 1
-		for end < len(row) && selected(end) == selected(c) {
-			end++
+// inputColors returns the color of each cell of the input, counted from the
+// start of the prompt: the selection in the accent color, then the command
+// word colored by what it is, then the text color.
+func (g *Game) inputColors(promptLen int, now time.Time) func(cell int) color.RGBA {
+	selFrom, selTo := g.selectionCells(promptLen)
+	start, end := commandWord([]rune(g.editor.Text()))
+	cmdFrom, cmdTo := promptLen+start, promptLen+end
+	cmdColor := g.commandColor(g.classifyCommand(g.editor.Text(), now))
+	return func(cell int) color.RGBA {
+		switch {
+		case cell >= selFrom && cell < selTo:
+			return g.theme.Accent
+		case cell >= cmdFrom && cell < cmdTo:
+			return cmdColor
 		}
-		clr := g.theme.Foreground
-		if selected(c) {
-			clr = g.theme.Accent
+		return g.theme.Foreground
+	}
+}
+
+// drawInputRow draws row's runes from column from on, in runs of the same
+// color. rowCell is the cell the row starts at.
+func (g *Game) drawInputRow(dst *ebiten.Image, row []rune, from, rowCell int, x, y float64, colorAt func(cell int) color.RGBA) {
+	for c := from; c < len(row); {
+		clr := colorAt(rowCell + c)
+		end := c + 1
+		for end < len(row) && colorAt(rowCell+end) == clr {
+			end++
 		}
 		g.drawText(dst, string(row[c:end]), x+float64(c)*g.faces.cellW, y, clr, 1)
 		c = end
@@ -519,6 +540,8 @@ func (g *Game) statusHint(now time.Time) (hint string, spinner bool) {
 	default:
 		if n := g.jobs.RunningInBackground(); n > 0 {
 			hint, spinner = fmt.Sprintf("%d background %s · ctrl+t", n, plural(n, "job", "jobs")), true
+		} else if g.attached == nil && g.viewing == nil && g.suggestion(now) != "" {
+			hint = "tab completes"
 		} else if len(g.jobs.Listed()) > 0 {
 			hint = "ctrl+t for jobs"
 		} else {

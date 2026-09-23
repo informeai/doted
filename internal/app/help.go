@@ -28,6 +28,7 @@ var helpCommands = []helpCommand{
 
 var helpKeys = []struct{ keys, desc string }{
 	{"enter · ↑↓", "run the line · browse history"},
+	{"tab · →", "accept the suggestion shown after the cursor"},
 	{"shift+←→", "select text (also shift+home/end); typing replaces it"},
 	{"cmd+c · x · v", "copy · cut · paste (ctrl+shift+c/x/v on linux/windows)"},
 	{"ctrl+y", "paste back what ctrl+w or ctrl+u deleted"},

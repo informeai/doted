@@ -58,10 +58,13 @@ type Game struct {
 	keyBuf      []byte
 	ptyCols     int // terminal size last given to the jobs
 	ptyRows     int
-	clipboard   string    // doted's own clipboard; see clipboard.go
-	flashText   string    // short status-line message, e.g. "copied"
-	flashUntil  time.Time // when flashText goes away
-	quitArmed   bool      // exit was asked once while jobs were still running
+	lookups     map[string]lookup // cached command lookups; see commandcheck.go
+	suggest     suggestCache      // the autosuggestion; see suggest.go
+	zap         zap               // the bolt run after accepting a suggestion; see zap.go
+	clipboard   string            // doted's own clipboard; see clipboard.go
+	flashText   string            // short status-line message, e.g. "copied"
+	flashUntil  time.Time         // when flashText goes away
+	quitArmed   bool              // exit was asked once while jobs were still running
 	quit        bool
 
 	// Set by Layout / Draw, read by Update.
@@ -130,6 +133,7 @@ func (g *Game) apply(s Settings) {
 	g.scrollback.SetLimit(s.Config.Scrollback.Lines)
 	g.jobs.SetScrollback(s.Config.Scrollback.Lines)
 	g.session.Configure(s.Config.Shell.Program, s.Config.Shell.Env)
+	g.suggest = suggestCache{} // the PATH may have changed
 	for _, n := range s.Notices {
 		g.notify(terminal.System, "config: "+n)
 	}
@@ -187,6 +191,7 @@ func (g *Game) Update() error {
 	}
 	g.syncPTYSize()
 	g.handleScrolling()
+	g.updateZap(time.Now())
 	g.sparks.step(tickSeconds)
 	g.trackDir(time.Now())
 
@@ -316,10 +321,14 @@ func (g *Game) handleKeyboard() {
 		} else {
 			g.editor.Left(shift)
 		}
+	case inpututil.IsKeyJustPressed(ebiten.KeyTab):
+		g.acceptSuggestion()
 	case repeating(ebiten.KeyArrowRight):
-		if meta {
+		switch {
+		case meta:
 			g.editor.End(shift)
-		} else {
+		case !shift && g.acceptSuggestion(): // at the end of the line, as in fish
+		default:
 			g.editor.Right(shift)
 		}
 	case repeating(ebiten.KeyArrowUp):

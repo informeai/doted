@@ -63,6 +63,17 @@ func (s *sparks) burst(n int, barHeight float64) {
 	}
 }
 
+// burstAt fires n sparks from around (x, y), relative to the bar's center
+// in logical px, in every direction.
+func (s *sparks) burstAt(n int, x, y float64) {
+	s.burst(n, 4)
+	// burst keeps the newest sparks at the end, even when it trims the oldest.
+	for i := max(0, len(s.items)-n); i < len(s.items); i++ {
+		s.items[i].x += x
+		s.items[i].y += y
+	}
+}
+
 // step advances every spark by dt seconds and drops the ones that faded.
 func (s *sparks) step(dt float64) {
 	drag := math.Exp(-sparkDrag * dt)

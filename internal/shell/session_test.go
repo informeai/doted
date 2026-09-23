@@ -212,3 +212,70 @@ func TestImportLoginEnvironment(t *testing.T) {
 		t.Fatal("expected an error for a missing shell")
 	}
 }
+
+func TestFindCommand(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "bin")
+	os.Mkdir(bin, 0o755)
+	os.WriteFile(filepath.Join(bin, "mytool"), []byte("#!/bin/sh\n"), 0o755)
+	os.WriteFile(filepath.Join(bin, "notexec"), []byte("data"), 0o644)
+	os.WriteFile(filepath.Join(dir, "build.sh"), []byte("#!/bin/sh\n"), 0o755)
+
+	sess := NewSession(dir)
+	sess.Configure("/bin/sh", map[string]string{"PATH": bin})
+	for name, want := range map[string]bool{
+		"mytool":        true,  // in the configured PATH
+		"notexec":       false, // there, but not executable
+		"sh":            false, // not in this PATH
+		"nope":          false,
+		"./build.sh":    true, // relative to the session's directory
+		"./missing.sh":  false,
+		"bin":           false, // a directory isn't a command
+		"/bin/sh":       true,
+		"":              false,
+		"bin/mytool":    true,
+		"./bin/notexec": false,
+	} {
+		if got := sess.FindCommand(name); got != want {
+			t.Errorf("FindCommand(%q) = %v, want %v", name, got, want)
+		}
+	}
+
+	// Without the override, the real PATH is used.
+	sess.Configure("/bin/sh", nil)
+	if !sess.FindCommand("sh") {
+		t.Error("sh should be found in the system PATH")
+	}
+}
+
+func TestIsShellBuiltin(t *testing.T) {
+	for _, name := range []string{"echo", "export", "source", "if", "["} {
+		if !IsShellBuiltin(name) {
+			t.Errorf("%q should be a shell builtin", name)
+		}
+	}
+	if IsShellBuiltin("git") {
+		t.Error("git is not a shell builtin")
+	}
+}
+
+func TestCommands(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	for dir, names := range map[string][]string{a: {"alpha", "beta"}, b: {"beta", "gamma"}} {
+		for _, n := range names {
+			os.WriteFile(filepath.Join(dir, n), []byte("#!/bin/sh\n"), 0o755)
+		}
+	}
+	os.WriteFile(filepath.Join(a, "data.txt"), []byte("x"), 0o644)
+	os.Mkdir(filepath.Join(a, "subdir"), 0o755)
+
+	sess := NewSession(t.TempDir())
+	sess.Configure("/bin/sh", map[string]string{"PATH": a + string(os.PathListSeparator) + b + string(os.PathListSeparator) + "relative"})
+	got := map[string]int{}
+	for _, n := range sess.Commands() {
+		got[n]++
+	}
+	if len(got) != 3 || got["alpha"] != 1 || got["beta"] != 1 || got["gamma"] != 1 {
+		t.Fatalf("Commands() = %v, want alpha, beta and gamma once each", got)
+	}
+}

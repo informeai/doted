@@ -26,6 +26,17 @@ func (e *Editor) Cursor() int { return e.cursor }
 
 func (e *Editor) Empty() bool { return len(e.buf) == 0 }
 
+// AtEnd reports whether the cursor is at the end of the line, with nothing
+// selected: where a suggestion can continue the line.
+func (e *Editor) AtEnd() bool {
+	_, _, selecting := e.Selection()
+	return e.cursor == len(e.buf) && !selecting
+}
+
+// History returns the submitted lines, oldest first. The slice is shared:
+// don't modify it.
+func (e *Editor) History() []string { return e.history }
+
 // Selection returns the selected range [start, end) of the line, if any.
 func (e *Editor) Selection() (start, end int, ok bool) {
 	if !e.selecting || e.anchor == e.cursor {
