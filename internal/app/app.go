@@ -18,6 +18,7 @@ import (
 	"github.com/informeai/doted/internal/jobs"
 	"github.com/informeai/doted/internal/shell"
 	"github.com/informeai/doted/internal/terminal"
+	"github.com/informeai/doted/internal/winstate"
 )
 
 const (
@@ -56,12 +57,12 @@ type Game struct {
 	scroll      int              // visual rows scrolled up from the bottom
 	sparks      *sparks          // fired from the prompt bar while typing
 	historyPath string           // where typed commands are saved
+	window      windowTracker    // size and place of the window, remembered across runs
 	definitions chan definitions // the shell's startup aliases and functions, once loaded
 	path        pathRoll         // the directory on the status line, rolling after a cd
 	lastInput   time.Time        // keeps the cursor solid while typing
 	bounceStart time.Time        // when the dot cursor started hopping; see bounceElapsed
 	chars       []rune
-	keyBuf      []byte
 	ptyCols     int // terminal size last given to the jobs
 	ptyRows     int
 	lookups     map[string]lookup // cached command lookups; see commandcheck.go
@@ -116,6 +117,7 @@ func New(s Settings, configPath string) (*Game, error) {
 		outputRows:  24,
 		sparks:      newSparks(uint64(time.Now().UnixNano())),
 		historyPath: history.Path(),
+		window:      windowTracker{path: winstate.Path()},
 		definitions: make(chan definitions, 1),
 	}
 	g.apply(s)
@@ -268,7 +270,9 @@ func (g *Game) Update() error {
 	g.sparks.step(tickSeconds)
 	g.trackDir(time.Now())
 
-	if g.quit {
+	g.trackWindow(time.Now())
+	if g.quit || ebiten.IsWindowBeingClosed() {
+		g.saveWindow()
 		g.jobs.KillAll()
 		g.session.Close()
 		return ebiten.Termination
@@ -430,7 +434,8 @@ func (g *Game) handleKeyboard() {
 // handleAttachedKeys sends keystrokes to the attached job, except Ctrl+B,
 // which moves it to the background.
 func (g *Game) handleAttachedKeys() {
-	if ctrlPressed(ebiten.KeyB) {
+	// A full-screen program gets Ctrl+B too (vim pages up with it).
+	if !g.attached.FullScreen() && ctrlPressed(ebiten.KeyB) {
 		g.background()
 		return
 	}
@@ -438,7 +443,8 @@ func (g *Game) handleAttachedKeys() {
 }
 
 // forwardKeyboard sends keystrokes to a job's terminal, which takes care of
-// echo, line editing and signals (Ctrl+C, Ctrl+Z...).
+// echo, line editing and signals (Ctrl+C, Ctrl+Z...). The job's emulator
+// encodes them as the program's terminal modes ask.
 func (g *Game) forwardKeyboard(j *jobs.Job) {
 	if clipboardChord(ebiten.KeyV) {
 		g.pasteTo(j)
@@ -450,12 +456,7 @@ func (g *Game) forwardKeyboard(j *jobs.Job) {
 		g.copySelection()
 		return
 	}
-	g.chars = ebiten.AppendInputChars(g.chars[:0])
-	g.keyBuf = appendKeyBytes(g.keyBuf[:0], g.chars)
-	if len(g.keyBuf) == 0 {
-		return
-	}
-	if err := j.Write(g.keyBuf); err == nil {
+	if g.sendKeyboard(j) {
 		g.scroll = 0
 		g.touch()
 		g.typed()
@@ -472,6 +473,10 @@ func (g *Game) syncPTYSize() {
 }
 
 func (g *Game) handleScrolling() {
+	if j := g.screenJob(); j != nil {
+		g.scrollScreen(j) // the wheel goes to the program; PgUp/PgDn go as keys
+		return
+	}
 	if _, dy := ebiten.Wheel(); dy != 0 {
 		g.scrollBy(int(dy * wheelRows))
 	}

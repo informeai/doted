@@ -47,8 +47,11 @@ func main() {
 	}
 
 	ebiten.SetWindowTitle("doted")
-	ebiten.SetWindowSize(settings.Config.Window.Width, settings.Config.Window.Height)
-	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled) // before RestoreWindow: maximizing needs it
+	app.RestoreWindow(settings.Config)
+	// Closing the window goes through Update, which saves the window's size
+	// and stops the running commands.
+	ebiten.SetWindowClosingHandled(true)
 	// Title bar and taskbar on Windows and Linux; macOS uses the bundle's icon.
 	if imgs, err := icon.Images(); err == nil {
 		ebiten.SetWindowIcon(imgs)

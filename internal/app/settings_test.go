@@ -16,6 +16,7 @@ func newTestGame(t *testing.T) *Game {
 	t.Setenv("HOME", home)
 	t.Setenv("ZDOTDIR", home)
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	g, err := New(DefaultSettings(), filepath.Join(t.TempDir(), "config.toml"))
 	if err != nil {
 		t.Fatal(err)

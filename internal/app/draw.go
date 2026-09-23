@@ -114,7 +114,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		jobCursor = g.parser.Col()
 	}
 	g.outTop, g.outBottom, g.outLeft = pad, outputBottom, pad
-	g.drawScrollback(screen, sb, jobCursor, pad, outputBottom, now)
+	if sj := g.screenJob(); sj != nil {
+		g.rows = g.rows[:0]
+		g.drawScreen(screen, sj, pad, outputBottom-float64(sj.Screen().Height())*f.lineH, now)
+	} else {
+		g.drawScrollback(screen, sb, jobCursor, pad, outputBottom, now)
+	}
 	switch {
 	case g.panel.open && g.panel.kind == panelHelp:
 		g.drawHelpPanel(screen, pad, w-pad, upperRule-gap)
@@ -136,6 +141,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		inputHint = fmt.Sprintf("input is sent to job %d · ctrl+b to go back", g.viewing.ID)
 	case g.viewing != nil:
 		inputHint = fmt.Sprintf("job %d has finished · esc to go back", g.viewing.ID)
+	case g.attached != nil && g.attached.FullScreen():
+		inputHint = "the program on screen gets every key, ctrl+b included"
 	case g.attached != nil:
 		inputHint = "input is sent to the running command · ctrl+b to background"
 	}
@@ -534,8 +541,8 @@ func (g *Game) statusHint(now time.Time) (hint string, spinner bool) {
 		hint = g.flashText
 	case g.scroll > 0:
 		hint = "scrolled up · pgdn to return"
-	case g.attached != nil && g.parser.AltScreen, g.viewing != nil && g.viewing.AltScreen():
-		hint = "full-screen programs aren't supported yet · ctrl+c"
+	case g.screenJob() != nil:
+		hint, spinner = "full screen · every key goes to the program", true
 	case g.viewing != nil && g.viewing.Running():
 		hint, spinner = "running "+formatElapsed(g.viewing.Elapsed(now)), true
 	case g.viewing != nil:

@@ -84,6 +84,12 @@ func (s *outputSelection) cellsIn(seq, n int) (from, to int, ok bool) {
 // handleMouse selects output with the mouse and keeps the pointer shaped for
 // text over it.
 func (g *Game) handleMouse(now time.Time) {
+	if g.screenJob() != nil {
+		// A full-screen program owns the output area.
+		g.outSel.clear()
+		g.setCursorShape(false)
+		return
+	}
 	sb := g.visibleScrollback()
 	if g.outSel.sb != nil && g.outSel.sb != sb {
 		g.outSel.clear() // the view changed under the selection

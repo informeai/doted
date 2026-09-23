@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -143,9 +144,9 @@ func (s *Session) Start(cmdline string, cols, rows int) (*Process, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, s.shell, args...)
 	cmd.Dir = s.dir
-	// Colors are rendered, but screen-addressing programs are not supported
-	// yet, so keep pagers out of the way.
-	cmd.Env = append(slices.Clone(s.base), "TERM=xterm-256color", "COLORTERM=truecolor", "CLICOLOR=1", "PAGER=cat", "GIT_PAGER=cat")
+	// doted draws colors, and full-screen programs (pagers included) through
+	// its grid emulator.
+	cmd.Env = append(slices.Clone(s.base), "TERM=xterm-256color", "COLORTERM=truecolor", "CLICOLOR=1")
 	cmd.Env = append(cmd.Env, s.env...) // later entries win
 
 	pty, err := startPTY(cmd, cols, rows)
@@ -153,7 +154,8 @@ func (s *Session) Start(cmdline string, cols, rows int) (*Process, error) {
 		cancel()
 		return nil, err
 	}
-	p := &Process{events: make(chan Event, 256), pty: pty, cancel: cancel, running: true, state: state}
+	p := &Process{events: make(chan Event, 256), pty: pty, cancel: cancel, state: state}
+	p.running.Store(true)
 
 	go func() {
 		readDone := make(chan struct{})
@@ -188,8 +190,8 @@ type Process struct {
 	events  chan Event
 	pty     *os.File
 	cancel  context.CancelFunc
-	running bool
-	state   string // prefix of the state files the command writes; see Session.Adopt
+	running atomic.Bool // Write may be called from another goroutine
+	state   string      // prefix of the state files the command writes; see Session.Adopt
 }
 
 // State is where the command leaves the shell state it ended with, for
@@ -198,11 +200,11 @@ func (p *Process) State() string { return p.state }
 
 // Running reports whether the command has not finished yet (as far as the
 // events drained so far tell).
-func (p *Process) Running() bool { return p.running }
+func (p *Process) Running() bool { return p.running.Load() }
 
 // Write sends input (keystrokes) to the command's terminal.
 func (p *Process) Write(b []byte) error {
-	if !p.running {
+	if !p.running.Load() {
 		return nil
 	}
 	_, err := p.pty.Write(b)
@@ -211,7 +213,7 @@ func (p *Process) Write(b []byte) error {
 
 // Resize tells the command its terminal is now cols×rows (SIGWINCH).
 func (p *Process) Resize(cols, rows int) error {
-	if !p.running {
+	if !p.running.Load() {
 		return nil
 	}
 	return setSize(p.pty, cols, rows)
@@ -228,7 +230,7 @@ func (p *Process) Drain(fn func(Event)) {
 		select {
 		case ev := <-p.events:
 			if ev.Done {
-				p.running = false
+				p.running.Store(false)
 			}
 			fn(ev)
 		default:

@@ -159,7 +159,7 @@ func (s *Session) Discard(state string) {
 // are left out of the adopted environment.
 var managedVars = map[string]bool{
 	"SHLVL": true, "_": true, "PWD": true, "OLDPWD": true,
-	"TERM": true, "COLORTERM": true, "CLICOLOR": true, "PAGER": true, "GIT_PAGER": true,
+	"TERM": true, "COLORTERM": true, "CLICOLOR": true,
 }
 
 func (s *Session) cleanEnv(dump []byte) []string {

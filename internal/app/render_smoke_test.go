@@ -83,6 +83,7 @@ func TestMain(m *testing.M) {
 	os.Setenv("HOME", home)
 	os.Setenv("ZDOTDIR", home)
 	os.Setenv("XDG_DATA_HOME", home)
+	os.Setenv("XDG_STATE_HOME", home)
 	g, err := New(DefaultSettings(), filepath.Join(os.TempDir(), "doted-smoke-config.toml"))
 	if err != nil {
 		panic(err)

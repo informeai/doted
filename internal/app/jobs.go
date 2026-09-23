@@ -59,7 +59,7 @@ func (g *Game) handleJobViewKeys() {
 	switch {
 	case ctrlPressed(ebiten.KeyB):
 		g.closeJob()
-	case ctrlPressed(ebiten.KeyT):
+	case ctrlPressed(ebiten.KeyT) && !j.FullScreen():
 		g.openPanel()
 	case !j.Running():
 		// Nothing to type into any more: any of these goes back.

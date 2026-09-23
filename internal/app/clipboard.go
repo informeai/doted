@@ -88,11 +88,10 @@ func (g *Game) pasteTo(j *jobs.Job) {
 		g.flash("clipboard is empty")
 		return
 	}
-	if j.Write([]byte(g.clipboard)) == nil {
-		g.scroll = 0
-		g.touch()
-		g.typed()
-	}
+	j.Paste(g.clipboard)
+	g.scroll = 0
+	g.touch()
+	g.typed()
 }
 
 // kill keeps text deleted by Ctrl+W or Ctrl+U for Ctrl+Y.

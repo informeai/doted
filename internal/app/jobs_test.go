@@ -208,3 +208,21 @@ func TestPasteIntoRunningCommand(t *testing.T) {
 		t.Fatalf("the program didn't receive the paste: %q", mainText(g))
 	}
 }
+
+func TestFullScreenTakesTheOutputArea(t *testing.T) {
+	g := newTestGame(t)
+	run(g, `printf '\033[?1049h'; read x; printf '\033[?1049l'`)
+	j := g.attached
+	tickUntil(t, g, func() bool { return j.FullScreen() })
+	if g.screenJob() != j {
+		t.Fatal("the full-screen job should fill the output area")
+	}
+	if hint, _ := g.statusHint(time.Now()); !strings.HasPrefix(hint, "full screen") {
+		t.Fatalf("status hint = %q", hint)
+	}
+	j.Write([]byte("\r"))
+	tickUntil(t, g, func() bool { return g.attached == nil })
+	if g.screenJob() != nil {
+		t.Fatal("the grid should give way to the history once the program ends")
+	}
+}

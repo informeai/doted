@@ -45,9 +45,10 @@ type Font struct {
 }
 
 type Window struct {
-	Width   int     `toml:"width"`
-	Height  int     `toml:"height"`
-	Padding float64 `toml:"padding"`
+	Width    int     `toml:"width"`
+	Height   int     `toml:"height"`
+	Remember bool    `toml:"remember"`
+	Padding  float64 `toml:"padding"`
 }
 
 type PromptStyle string

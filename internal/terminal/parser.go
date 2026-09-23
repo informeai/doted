@@ -22,9 +22,10 @@ const (
 // the scrollback as styled lines.
 //
 // It covers what line-oriented programs use: text, CR/LF/BS/TAB, SGR colors
-// and attributes, and cursor moves and erases within the current line. Moving
-// the cursor to other lines and full-screen programs (the alternate screen)
-// are not emulated yet.
+// and attributes, and cursor moves and erases within the current line.
+// Full-screen programs (on the alternate screen) are drawn from a grid
+// emulator instead, so the parser skips what they write there and keeps the
+// lines printed around them.
 type Parser struct {
 	sb *Scrollback
 
@@ -129,6 +130,9 @@ func (p *Parser) Write(data []byte, at time.Time) {
 }
 
 func (p *Parser) control(b byte, at time.Time) {
+	if p.AltScreen {
+		return // a full-screen program's screen isn't line output
+	}
 	switch b {
 	case '\n':
 		p.live(at)
@@ -161,6 +165,9 @@ func (p *Parser) newLine() {
 }
 
 func (p *Parser) put(r rune, at time.Time) {
+	if p.AltScreen {
+		return // a full-screen program's screen isn't line output
+	}
 	l := p.live(at)
 	for len(l.Cells) < p.col {
 		l.Cells = append(l.Cells, Cell{Rune: ' '})
@@ -197,6 +204,9 @@ func (p *Parser) csi(final byte, at time.Time) {
 			}
 		}
 		return
+	}
+	if p.AltScreen {
+		return // colors and moves on the alternate screen don't touch the lines
 	}
 
 	switch final {

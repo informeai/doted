@@ -121,3 +121,12 @@ func TestParserAltScreen(t *testing.T) {
 		t.Fatal("AltScreen not cleared")
 	}
 }
+
+func TestParserSkipsTheAlternateScreen(t *testing.T) {
+	// A full-screen program: its screen goes to the grid emulator, not to the
+	// line history, which keeps what was printed around it.
+	_, lines := run("before\r\n", "\x1b[?1049h\x1b[2J\x1b[H~\r\n~ vim screen\x1b[31mred", "\x1b[?1049l", "after\r\n")
+	if got := texts(lines); !slices.Equal(got, []string{"before", "after"}) {
+		t.Fatalf("lines = %q, want before and after only", got)
+	}
+}

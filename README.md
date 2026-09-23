@@ -45,6 +45,12 @@ Enquanto você digita, a palavra do comando muda de cor: na cor de destaque se f
 
 Também como no fish, uma sugestão aparece apagada depois do cursor enquanto você digita, e Tab (ou → no fim da linha) aceita. Ela vem, nesta ordem: do comando mais recente do histórico que começa com o que você digitou; do nome de um comando (do doted, embutido do shell ou do `PATH`); ou de um arquivo ou pasta, no último argumento (`cd Pro` → `cd Projects/`). Entre nomes de comando, o mais curto vence; no empate, os do doted vêm primeiro. Ao aceitar com Tab, a bolinha do cursor some e um sublinhado elétrico corre sob o texto até o fim do comando completado, onde a bolinha reaparece com algumas faíscas (só com o cursor `dot` e as animações ligadas).
 
+### Programas de tela cheia
+
+`vim`, `less`, `htop`, `man`, `nano` e outros programas que ocupam a tela inteira funcionam: quando um deles entra na tela alternativa, a área de saída passa a mostrar a grade completa do terminal, com cores (na paleta do tema), cursor e movimentação livre, e volta para o histórico quando ele sai, sem deixar o conteúdo da tela no histórico. Enquanto isso, todas as teclas vão para o programa, inclusive Esc, Ctrl+B, PgUp/PgDn, F1–F12 e Alt, codificadas nos modos que ele pedir, e a roda do mouse vira setas. Com isso, `git log` e `man` voltam a usar o `less` como pager.
+
+A emulação usa o [`charmbracelet/x/vt`](https://github.com/charmbracelet/x/tree/main/vt), que também responde às perguntas que esses programas fazem ao terminal (posição do cursor, tipo de terminal).
+
 ### Atalhos
 
 | Tecla | Na entrada | Com comando rodando |
@@ -110,7 +116,7 @@ O doted lê um arquivo TOML em `~/.config/doted/config.toml` (ou `$XDG_CONFIG_HO
 doted -init-config
 ```
 
-Só é preciso definir o que você quer mudar; o resto usa os padrões. As mudanças são aplicadas assim que o arquivo é salvo, sem reiniciar. Só o tamanho inicial da janela exige reiniciar. Se o arquivo tiver um erro, o doted mantém a configuração atual e mostra a mensagem no terminal. Para usar outro arquivo: `doted -config caminho/config.toml`.
+Só é preciso definir o que você quer mudar; o resto usa os padrões. As mudanças são aplicadas assim que o arquivo é salvo, sem reiniciar. Só o tamanho inicial da janela exige reiniciar, e ele vale apenas na primeira vez: depois, o doted reabre a janela do jeito que você a deixou. Se o arquivo tiver um erro, o doted mantém a configuração atual e mostra a mensagem no terminal. Para usar outro arquivo: `doted -config caminho/config.toml`.
 
 Exemplo:
 
@@ -145,7 +151,7 @@ EDITOR = "nvim"
 | Seção | Opções |
 | --- | --- |
 | `[font]` | `family`, `size`, `line_height` |
-| `[window]` | `width`, `height` (só na inicialização), `padding` |
+| `[window]` | `width`, `height` (tamanho da primeira janela; padrão 1280 × 800), `remember` (reabrir com o tamanho, a posição e o estado maximizado da última vez, guardados em `~/.local/state/doted/window.json`), `padding` |
 | `[prompt]` | `style` (padrão `bar`: uma barra vertical na cor do texto que fica na cor de destaque e solta faíscas enquanto você digita; ou `symbol`), `symbol` |
 | `[cursor]` | `style` (padrão `dot`: uma bolinha na cor do texto que fica na cor de destaque e pula enquanto você digita), `animate` |
 | `[animation]` | `enabled` (liga ou desliga todas as animações), `fade_in_ms`, `particles` (as faíscas da barra) |
@@ -238,7 +244,6 @@ go test -tags smoke ./internal/app/
 
 ## Limitações atuais
 
-- Programas de tela cheia (`vim`, `top`, `less`, `htop`) ainda não são emulados. Quando um deles entra na tela alternativa, a barra de status avisa. Por isso `PAGER` e `GIT_PAGER` são definidos como `cat`.
 - O cursor só se move dentro da linha atual; sequências que movem o cursor para outras linhas são ignoradas.
 - Jobs em background não são pausados (não há Ctrl+Z/SIGTSTP): eles continuam rodando.
 - A área de transferência é só do doted: copiar e colar funcionam dentro dele, mas ainda não trocam texto com outros apps (o Ebitengine não expõe a área de transferência do sistema).

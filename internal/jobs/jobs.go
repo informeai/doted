@@ -4,9 +4,13 @@
 package jobs
 
 import (
+	"io"
 	"slices"
 	"strings"
 	"time"
+
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/vt"
 
 	"github.com/informeai/doted/internal/shell"
 	"github.com/informeai/doted/internal/terminal"
@@ -31,6 +35,12 @@ type Job struct {
 
 	proc   *shell.Process
 	parser *terminal.Parser
+
+	// screen emulates the whole terminal grid. Full-screen programs (vim,
+	// less, htop) are drawn from it; it also encodes keys the way the
+	// program asked for and answers its queries, such as where the cursor is.
+	screen        *vt.Emulator
+	cursorVisible bool
 }
 
 func (j *Job) Running() bool { return j.proc.Running() }
@@ -38,10 +48,56 @@ func (j *Job) Running() bool { return j.proc.Running() }
 // Col is the job's cursor column on its newest output line.
 func (j *Job) Col() int { return j.parser.Col() }
 
-// AltScreen reports whether the job asked for a full-screen display.
-func (j *Job) AltScreen() bool { return j.parser.AltScreen }
+// Write sends raw input to the job. It goes through the screen's input like
+// keys and pastes do, so everything typed reaches the program in order.
+func (j *Job) Write(b []byte) error {
+	if !j.Running() {
+		return nil
+	}
+	_, err := j.screen.InputPipe().Write(b)
+	return err
+}
 
-func (j *Job) Write(b []byte) error { return j.proc.Write(b) }
+// closeScreen ends the goroutine forwarding the screen's input. It closes
+// the input pipe itself rather than calling the emulator's Close, which sets
+// a flag that goroutine reads without a lock.
+func (j *Job) closeScreen() {
+	if pw, ok := j.screen.InputPipe().(io.Closer); ok {
+		pw.Close()
+	}
+}
+
+// FullScreen reports whether the job shows a full-screen program: it
+// switched to the alternate screen.
+func (j *Job) FullScreen() bool { return j.screen.IsAltScreen() }
+
+// Screen is the job's terminal grid, for drawing a full-screen program.
+func (j *Job) Screen() *vt.Emulator { return j.screen }
+
+// CursorVisible reports whether the program shows its cursor.
+func (j *Job) CursorVisible() bool { return j.cursorVisible }
+
+// SendKey sends a key to the job, encoded as its terminal modes ask.
+func (j *Job) SendKey(k uv.KeyEvent) {
+	if j.Running() {
+		j.screen.SendKey(k)
+	}
+}
+
+// Paste types text into the job as a paste, bracketed if the program asked
+// for it (so an editor doesn't auto-indent or run what's pasted).
+func (j *Job) Paste(s string) {
+	if j.Running() {
+		j.screen.Paste(s)
+	}
+}
+
+// SendText types text into the job.
+func (j *Job) SendText(s string) {
+	if j.Running() {
+		j.screen.SendText(s)
+	}
+}
 
 // State is where the job's shell left its state; see shell.Session.Adopt.
 func (j *Job) State() string { return j.proc.State() }
@@ -88,14 +144,32 @@ func (m *Manager) Start(s *shell.Session, cmdline string, cols, rows int, now ti
 	}
 	out := terminal.NewScrollback(m.lines)
 	j := &Job{
-		ID:      m.nextID,
-		Command: cmdline,
-		Started: now,
-		Output:  out,
-		proc:    proc,
-		parser:  terminal.NewParser(out),
+		ID:            m.nextID,
+		Command:       cmdline,
+		Started:       now,
+		Output:        out,
+		proc:          proc,
+		parser:        terminal.NewParser(out),
+		screen:        vt.NewEmulator(cols, rows),
+		cursorVisible: true,
 	}
 	j.parser.Begin()
+	j.screen.SetScrollbackSize(0) // the line history is Output
+	j.screen.SetCallbacks(vt.Callbacks{CursorVisibility: func(v bool) { j.cursorVisible = v }})
+	// What the emulator writes as terminal input (encoded keys, answers to
+	// queries) goes to the program. It ends when the screen is closed.
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := j.screen.Read(buf)
+			if n > 0 {
+				proc.Write(buf[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
 	m.nextID++
 	m.jobs = append(m.jobs, j)
 	return j, nil
@@ -108,8 +182,10 @@ func (m *Manager) Poll(now time.Time, fn func(*Job, shell.Event)) {
 		j.proc.Drain(func(ev shell.Event) {
 			if !ev.Done {
 				j.parser.Write(ev.Data, now)
+				j.screen.Write(ev.Data)
 			} else {
 				j.parser.End()
+				j.closeScreen()
 				j.Ended, j.Status, j.Killed = now, ev.Status, ev.Killed
 				switch {
 				case ev.Killed:
@@ -164,6 +240,9 @@ func (m *Manager) Remove(j *Job) {
 func (m *Manager) Resize(cols, rows int) {
 	for _, j := range m.jobs {
 		j.proc.Resize(cols, rows)
+		if j.Running() {
+			j.screen.Resize(cols, rows)
+		}
 	}
 }
 
