@@ -62,6 +62,9 @@ func (s *Scrollback) last() *Line { return &s.lines[len(s.lines)-1] }
 
 func (s *Scrollback) pop() { s.lines = s.lines[:len(s.lines)-1] }
 
+// SetLimit changes how many lines are kept; extra old lines go on the next append.
+func (s *Scrollback) SetLimit(n int) { s.limit = n }
+
 func (s *Scrollback) Len() int { return len(s.lines) }
 
 func (s *Scrollback) At(i int) Line { return s.lines[i] }

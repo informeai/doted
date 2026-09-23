@@ -58,16 +58,80 @@ No macOS, Cmd+←/→ vai para o início/fim da linha, Cmd+Backspace apaga até 
 - `clear`: limpa a tela
 - `exit` / `quit`: fecha o doted
 
+## Configuração
+
+O doted lê um arquivo TOML em `~/.config/doted/config.toml` (ou `$XDG_CONFIG_HOME/doted/config.toml`). Para gerar um arquivo com todas as opções comentadas:
+
+```sh
+doted -init-config
+```
+
+Só é preciso definir o que você quer mudar; o resto usa os padrões. As mudanças são aplicadas assim que o arquivo é salvo, sem reiniciar. Só o tamanho inicial da janela exige reiniciar. Se o arquivo tiver um erro, o doted mantém a configuração atual e mostra a mensagem no terminal. Para usar outro arquivo: `doted -config caminho/config.toml`.
+
+Exemplo:
+
+```toml
+[font]
+family = "JetBrains Mono"  # nome de uma fonte instalada ou caminho para .ttf/.otf/.ttc
+size = 16
+line_height = 1.4
+
+[cursor]
+style = "bar"              # block, bar ou underline
+blink = false
+
+[prompt]
+symbol = "$ "
+
+[colors]
+background = "#1e1e2e"
+foreground = "#cdd6f4"
+accent = "#f5c2e7"
+
+[colors.normal]
+red = "#f38ba8"
+
+[shell]
+program = "/bin/zsh"
+
+[shell.env]
+EDITOR = "nvim"
+```
+
+| Seção | Opções |
+| --- | --- |
+| `[font]` | `family`, `size`, `line_height` |
+| `[window]` | `width`, `height` (só na inicialização), `padding` |
+| `[prompt]` | `symbol` |
+| `[cursor]` | `style`, `blink` |
+| `[animation]` | `enabled`, `fade_in_ms` |
+| `[scrollback]` | `lines` |
+| `[shell]` | `program`, `[shell.env]` |
+| `[colors]` | `background`, `foreground`, `muted`, `accent`, `error`, `border`, `cursor` |
+| `[colors.normal]` / `[colors.bright]` | `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white` |
+
+Os padrões e a descrição de cada opção estão em [`internal/config/default.toml`](internal/config/default.toml).
+
+Sobre fontes:
+
+- Com um nome, as variantes negrito e itálico da mesma família são escolhidas automaticamente, incluindo fontes variáveis.
+- Com um caminho de arquivo, a mesma face é usada para todas as variantes.
+- A primeira busca por nome indexa as fontes do sistema e pode levar alguns segundos; o índice fica em cache.
+- Se a fonte não for encontrada, o doted usa a Go Mono embutida e avisa. Fontes que não são monoespaçadas também geram aviso.
+
 ## Estrutura
 
 ```
-main.go                  janela e loop do Ebitengine
+main.go                  flags, carga da configuração e janela do Ebitengine
 internal/
   app/                   o "jogo" do Ebitengine
     app.go               Update: teclado, rolagem, comandos internos
     draw.go              Draw: layout, texto com estilos, cursor e animações
     keys.go              tradução de teclas para bytes de terminal
-    theme.go             cores, paleta ANSI/256 cores e fonte
+    settings.go          configuração + fontes, e recarga ao salvar o arquivo
+    theme.go             cores e paleta ANSI/256 cores
+  config/                arquivo TOML: padrões (default.toml), validação e watcher
+  fonts/                 resolução da fonte por nome ou arquivo, com variantes
   shell/                 execução de comandos em PTY (entrada, saída, resize, kill)
   terminal/              modelo sem dependência de UI
     parser.go            interpretação da saída do programa (texto, SGR, CR/BS, erase)

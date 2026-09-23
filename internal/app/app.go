@@ -11,13 +11,14 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 
+	"github.com/informeai/doted/internal/config"
+	"github.com/informeai/doted/internal/fonts"
 	"github.com/informeai/doted/internal/shell"
 	"github.com/informeai/doted/internal/terminal"
 )
 
 const (
-	scrollbackLimit = 10_000
-	wheelRows       = 3
+	wheelRows = 3
 
 	// Key repeat, in ticks (Ebiten runs Update at 60 TPS).
 	repeatDelay    = 24
@@ -25,7 +26,12 @@ const (
 )
 
 type Game struct {
+	cfg        config.Config
 	theme      Theme
+	family     fonts.Family
+	configPath string
+	reloads    chan reload
+
 	scrollback *terminal.Scrollback
 	parser     *terminal.Parser
 	editor     terminal.Editor
@@ -45,17 +51,20 @@ type Game struct {
 	height     int
 	cols       int
 	outputRows int
-	fonts      *fonts
+	faces      *faceSet // rebuilt when the font settings or the scale change
 }
 
-func New() (*Game, error) {
+// New creates the game with the given settings and keeps them in sync with
+// the config file at configPath.
+func New(s Settings, configPath string) (*Game, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
-	sb := terminal.NewScrollback(scrollbackLimit)
+	sb := terminal.NewScrollback(s.Config.Scrollback.Lines)
 	g := &Game{
-		theme:      DefaultTheme,
+		configPath: configPath,
+		reloads:    make(chan reload, 1),
 		scrollback: sb,
 		parser:     terminal.NewParser(sb),
 		runner:     shell.NewRunner(dir),
@@ -64,10 +73,43 @@ func New() (*Game, error) {
 		outputRows: 24,
 	}
 	g.scrollback.Append(terminal.System, "doted — type a command and press Enter. Ctrl+C interrupts, Ctrl+L clears.", time.Now())
+	g.apply(s)
+	g.watchConfig()
 	return g, nil
 }
 
+// apply switches to new settings; everything but the window size takes
+// effect immediately.
+func (g *Game) apply(s Settings) {
+	g.cfg = s.Config
+	g.theme = newTheme(s.Config.Colors)
+	g.family = s.Fonts
+	g.faces = nil
+	g.scrollback.SetLimit(s.Config.Scrollback.Lines)
+	g.runner.Configure(s.Config.Shell.Program, s.Config.Shell.Env)
+	for _, n := range s.Notices {
+		g.scrollback.Append(terminal.System, "config: "+n, time.Now())
+	}
+}
+
+func (g *Game) handleReloads() {
+	if g.runner.Running() {
+		return // the parser owns the newest line; apply once the command ends
+	}
+	select {
+	case r := <-g.reloads:
+		if r.err != nil {
+			g.scrollback.Append(terminal.Error, "config not reloaded: "+r.err.Error(), time.Now())
+			return
+		}
+		g.apply(r.settings)
+		g.scrollback.Append(terminal.System, "config reloaded", time.Now())
+	default:
+	}
+}
+
 func (g *Game) Update() error {
+	g.handleReloads()
 	g.runner.Drain(g.handleEvent)
 	if g.runner.Running() {
 		g.forwardKeyboard()
@@ -233,7 +275,7 @@ func (g *Game) scrollBy(rows int) {
 func (g *Game) submit() {
 	line := g.editor.Submit()
 	g.scroll = 0
-	g.scrollback.Append(terminal.Command, promptSymbol+line, time.Now())
+	g.scrollback.Append(terminal.Command, g.cfg.Prompt.Symbol+line, time.Now())
 
 	cmd := strings.TrimSpace(line)
 	if cmd == "" || g.runBuiltin(cmd) {
@@ -271,7 +313,7 @@ func (g *Game) runBuiltin(cmd string) bool {
 // and start a fresh line.
 func (g *Game) abandonLine() {
 	if !g.editor.Empty() {
-		g.scrollback.Append(terminal.Command, promptSymbol+g.editor.Text()+"^C", time.Now())
+		g.scrollback.Append(terminal.Command, g.cfg.Prompt.Symbol+g.editor.Text()+"^C", time.Now())
 	}
 	g.editor.Reset()
 }

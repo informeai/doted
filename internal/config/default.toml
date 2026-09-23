@@ -1,0 +1,75 @@
+# doted configuration
+#
+# Every setting is optional: anything left out keeps the default shown here.
+# Changes are applied as soon as the file is saved, except [window] width and
+# height, which only apply on startup.
+
+[font]
+# Name of an installed font ("JetBrains Mono", "Menlo"...) or a path to a
+# .ttf/.otf/.ttc file. Empty uses the built-in Go Mono. With a name, bold and
+# italic variants are picked from the same family automatically.
+family = ""
+size = 15
+# Row height as a multiple of the font height.
+line_height = 1.3
+
+[window]
+width = 960
+height = 600
+# Space around the content, in points.
+padding = 14
+
+[prompt]
+symbol = "> "
+
+[cursor]
+# "block", "bar" or "underline"
+style = "block"
+blink = true
+
+[animation]
+# Fade-in of new lines and the pulsing dots while a command runs.
+enabled = true
+fade_in_ms = 180
+
+[scrollback]
+lines = 10000
+
+[shell]
+# Program used to run commands as `<program> -c "<command>"`. Empty uses $SHELL.
+program = ""
+
+# Extra environment variables for commands.
+[shell.env]
+# EDITOR = "nvim"
+
+# Colors are "#rrggbb" or "#rrggbbaa".
+[colors]
+background = "#141519"
+foreground = "#d8dbe2"
+muted = "#6c717e"   # status line, doted's own messages
+accent = "#d97757"  # prompt, echoed commands, spinner
+error = "#e56b6f"   # errors reported by doted
+border = "#3a3d46"  # rules around the input box
+cursor = "#d8dbe2"
+
+# The 16 ANSI colors programs choose from.
+[colors.normal]
+black = "#1e2026"
+red = "#e56b6f"
+green = "#98c379"
+yellow = "#e5c07b"
+blue = "#61afef"
+magenta = "#c678dd"
+cyan = "#56b6c2"
+white = "#d8dbe2"
+
+[colors.bright]
+black = "#5c6370"
+red = "#ff7b7f"
+green = "#b5e08d"
+yellow = "#f5d48f"
+blue = "#7dc4ff"
+magenta = "#da8ef0"
+cyan = "#6ed0dc"
+white = "#ffffff"

@@ -1,7 +1,6 @@
 package app
 
 import (
-	"bytes"
 	"image/color"
 	"math"
 	"os"
@@ -13,49 +12,32 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
-	"golang.org/x/image/font/gofont/gomono"
-	"golang.org/x/image/font/gofont/gomonobold"
-	"golang.org/x/image/font/gofont/gomonobolditalic"
-	"golang.org/x/image/font/gofont/gomonoitalic"
 
+	"github.com/informeai/doted/internal/config"
+	"github.com/informeai/doted/internal/fonts"
 	"github.com/informeai/doted/internal/terminal"
 )
 
 const (
-	promptSymbol = "> "
-
-	fadeInDuration = 180 * time.Millisecond
-	blinkPeriod    = time.Second
-	blinkHold      = 600 * time.Millisecond // cursor stays solid after a keystroke
-	dimAlpha       = 0.6
+	blinkPeriod = time.Second
+	blinkHold   = 600 * time.Millisecond // cursor stays solid after a keystroke
+	dimAlpha    = 0.6
 )
 
-// Font variants, indexed by fontVariant.
-var monoSources [4]*text.GoTextFaceSource
-
-func init() {
-	for i, ttf := range [][]byte{gomono.TTF, gomonobold.TTF, gomonoitalic.TTF, gomonobolditalic.TTF} {
-		src, err := text.NewGoTextFaceSource(bytes.NewReader(ttf))
-		if err != nil {
-			panic(err) // embedded fonts: can only fail if the binary is broken
-		}
-		monoSources[i] = src
-	}
-}
-
-func fontVariant(a terminal.Attr) int {
-	v := 0
+func fontVariant(a terminal.Attr) fonts.Variant {
+	v := fonts.Regular
 	if a&terminal.Bold != 0 {
-		v |= 1
+		v |= fonts.Bold
 	}
 	if a&terminal.Italic != 0 {
-		v |= 2
+		v |= fonts.Italic
 	}
 	return v
 }
 
-// fonts caches the faces and the monospace cell metrics for one device scale.
-type fonts struct {
+// faceSet caches the sized faces and the monospace cell metrics for one
+// font configuration and device scale.
+type faceSet struct {
 	scale      float64
 	faces      [4]*text.GoTextFace
 	cellW      float64
@@ -64,14 +46,14 @@ type fonts struct {
 	underlineY float64 // offset from the row top
 }
 
-func newFonts(size, scale float64) *fonts {
-	f := &fonts{scale: scale}
-	for i, src := range monoSources {
-		f.faces[i] = &text.GoTextFace{Source: src, Size: size * scale}
+func newFaceSet(fam fonts.Family, cfg config.Font, scale float64) *faceSet {
+	f := &faceSet{scale: scale}
+	for i, face := range fam.Faces {
+		f.faces[i] = face.NewFace(cfg.Size * scale)
 	}
 	m := f.faces[0].Metrics()
 	glyphH := m.HAscent + m.HDescent
-	f.lineH = math.Ceil(glyphH * 1.3)
+	f.lineH = math.Ceil(glyphH * cfg.LineHeight)
 	f.textDY = (f.lineH - glyphH) / 2
 	f.underlineY = f.textDY + m.HAscent + scale
 	f.cellW = text.AdvanceAt("M", 1, f.faces[0])
@@ -79,17 +61,19 @@ func newFonts(size, scale float64) *fonts {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	if g.fonts == nil || g.fonts.scale != g.scale {
-		g.fonts = newFonts(g.theme.FontSize, g.scale)
+	if g.faces == nil || g.faces.scale != g.scale {
+		g.faces = newFaceSet(g.family, g.cfg.Font, g.scale)
 	}
-	f := g.fonts
+	f := g.faces
+	prompt := g.cfg.Prompt.Symbol
+	promptLen := utf8.RuneCountInString(prompt)
 	now := time.Now()
 	screen.Fill(g.theme.Background)
 
-	pad := g.theme.Padding * g.scale
+	pad := g.cfg.Window.Padding * g.scale
 	gap := math.Round(f.lineH * 0.4)
 	w, h := float64(g.width), float64(g.height)
-	g.cols = max(len(promptSymbol)+1, int((w-2*pad)/f.cellW))
+	g.cols = max(promptLen+1, int((w-2*pad)/f.cellW))
 
 	// Laid out bottom-up: status line, input box between two rules, output.
 	statusY := h - pad - f.lineH
@@ -108,18 +92,18 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	rule(upperRule)
 	rule(lowerRule)
 
-	promptW := f.cellW * float64(len(promptSymbol))
+	promptW := f.cellW * float64(promptLen)
 	if g.runner.Running() {
 		// Keys go to the program; its cursor is drawn in the output instead.
-		g.drawText(screen, promptSymbol, pad, inputTop, g.theme.Muted, 1)
+		g.drawText(screen, prompt, pad, inputTop, g.theme.Muted, 1)
 		g.drawText(screen, "input is sent to the running command", pad+promptW, inputTop, g.theme.Muted, dimAlpha)
 	} else {
 		for i, row := range inputRows {
 			y := inputTop + float64(i)*f.lineH
 			x := pad
 			if i == 0 {
-				g.drawText(screen, promptSymbol, x, y, g.theme.Accent, 1)
-				row, x = row[len(promptSymbol):], x+promptW
+				g.drawText(screen, prompt, x, y, g.theme.Accent, 1)
+				row, x = row[promptLen:], x+promptW
 			}
 			g.drawText(screen, string(row), x, y, g.theme.Foreground, 1)
 		}
@@ -131,8 +115,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 // inputLayout wraps the prompt plus the typed text and locates the cursor.
 func (g *Game) inputLayout() (rows [][]rune, cursorRow, cursorCol int) {
-	rows = terminal.Wrap([]rune(promptSymbol+g.editor.Text()), g.cols)
-	idx := len(promptSymbol) + g.editor.Cursor()
+	rows = terminal.Wrap([]rune(g.cfg.Prompt.Symbol+g.editor.Text()), g.cols)
+	idx := utf8.RuneCountInString(g.cfg.Prompt.Symbol) + g.editor.Cursor()
 	cursorRow, cursorCol = idx/g.cols, idx%g.cols
 	if cursorRow == len(rows) {
 		rows = append(rows, nil) // cursor sits just past a full row
@@ -144,8 +128,8 @@ func (g *Game) inputLayout() (rows [][]rune, cursorRow, cursorCol int) {
 // recent output always hugs the input box. While a command runs, its cursor
 // is drawn on the newest (live) line.
 func (g *Game) drawOutput(dst *ebiten.Image, top, bottom float64, now time.Time) {
-	f := g.fonts
-	pad := g.theme.Padding * g.scale
+	f := g.faces
+	pad := g.cfg.Window.Padding * g.scale
 	y := bottom
 	skip := g.scroll
 	last := g.scrollback.Len() - 1
@@ -160,7 +144,7 @@ func (g *Game) drawOutput(dst *ebiten.Image, top, bottom float64, now time.Time)
 				rows = append(rows, nil)
 			}
 		}
-		alpha, dy := entrance(now.Sub(line.At), f.lineH)
+		alpha, dy := g.entrance(now.Sub(line.At))
 		for j := len(rows) - 1; j >= 0 && y-f.lineH >= top; j-- {
 			if skip > 0 {
 				skip--
@@ -181,7 +165,7 @@ func (g *Game) drawOutput(dst *ebiten.Image, top, bottom float64, now time.Time)
 
 // drawCells draws one row, one span per run of equally styled cells.
 func (g *Game) drawCells(dst *ebiten.Image, cells []terminal.Cell, x, y float64, kind terminal.Kind, alpha float64) {
-	f := g.fonts
+	f := g.faces
 	var runes []rune
 	for start := 0; start < len(cells); {
 		st := cells[start].Style
@@ -224,28 +208,40 @@ func (g *Game) drawCells(dst *ebiten.Image, cells []terminal.Cell, x, y float64,
 }
 
 // entrance animates a freshly appended line: it fades in while sliding up.
-func entrance(age time.Duration, lineH float64) (alpha, dy float64) {
-	t := min(1, float64(age)/float64(fadeInDuration))
+func (g *Game) entrance(age time.Duration) (alpha, dy float64) {
+	fadeIn := time.Duration(g.cfg.Animation.FadeInMs) * time.Millisecond
+	if !g.cfg.Animation.Enabled || fadeIn <= 0 {
+		return 1, 0
+	}
+	t := min(1, float64(age)/float64(fadeIn))
 	ease := 1 - math.Pow(1-t, 3) // ease-out cubic
-	return ease, (1 - ease) * lineH * 0.35
+	return ease, (1 - ease) * g.faces.lineH * 0.35
 }
 
-// drawCursor draws a blinking block cursor, redrawing the rune under it (if
-// any) in the background color.
+// drawCursor draws the cursor in the configured style. A block cursor
+// redraws the rune under it (if any) in the background color.
 func (g *Game) drawCursor(dst *ebiten.Image, x, y float64, under rune, now time.Time) {
-	solid := now.Sub(g.lastInput) < blinkHold
+	solid := !g.cfg.Cursor.Blink || now.Sub(g.lastInput) < blinkHold
 	if !solid && now.UnixMilli()%blinkPeriod.Milliseconds() >= blinkPeriod.Milliseconds()/2 {
 		return
 	}
-	f := g.fonts
-	vector.FillRect(dst, float32(x), float32(y), float32(f.cellW), float32(f.lineH), g.theme.Cursor, false)
-	if under != 0 {
-		g.drawText(dst, string(under), x, y, g.theme.Background, 1)
+	f := g.faces
+	thick := math.Max(2, math.Round(2*g.scale))
+	switch g.cfg.Cursor.Style {
+	case config.CursorBar:
+		vector.FillRect(dst, float32(x), float32(y), float32(thick), float32(f.lineH), g.theme.Cursor, false)
+	case config.CursorUnderline:
+		vector.FillRect(dst, float32(x), float32(y+f.lineH-thick), float32(f.cellW), float32(thick), g.theme.Cursor, false)
+	default:
+		vector.FillRect(dst, float32(x), float32(y), float32(f.cellW), float32(f.lineH), g.theme.Cursor, false)
+		if under != 0 {
+			g.drawText(dst, string(under), x, y, g.theme.Background, 1)
+		}
 	}
 }
 
 func (g *Game) drawStatus(dst *ebiten.Image, left, y, right float64, now time.Time) {
-	f := g.fonts
+	f := g.faces
 	g.drawText(dst, shortPath(g.runner.Dir()), left, y, g.theme.Muted, 1)
 
 	var hint string
@@ -268,9 +264,12 @@ func (g *Game) drawStatus(dst *ebiten.Image, left, y, right float64, now time.Ti
 
 // drawSpinner draws three dots pulsing in sequence.
 func (g *Game) drawSpinner(dst *ebiten.Image, x, cy float64, now time.Time) {
-	f := g.fonts
+	f := g.faces
 	r := f.cellW * 0.22
 	t := float64(now.UnixMilli()) / 1000
+	if !g.cfg.Animation.Enabled {
+		t = 0
+	}
 	for i := range 3 {
 		phase := math.Sin(t*2*math.Pi*1.2 - float64(i)*0.9)
 		a := 0.3 + 0.7*(phase+1)/2
@@ -280,7 +279,7 @@ func (g *Game) drawSpinner(dst *ebiten.Image, x, cy float64, now time.Time) {
 }
 
 func (g *Game) drawText(dst *ebiten.Image, s string, x, y float64, clr color.RGBA, alpha float64) {
-	g.drawTextFace(dst, g.fonts.faces[0], s, x, y, clr, alpha)
+	g.drawTextFace(dst, g.faces.faces[fonts.Regular], s, x, y, clr, alpha)
 }
 
 func (g *Game) drawTextFace(dst *ebiten.Image, face *text.GoTextFace, s string, x, y float64, clr color.RGBA, alpha float64) {
@@ -288,7 +287,7 @@ func (g *Game) drawTextFace(dst *ebiten.Image, face *text.GoTextFace, s string, 
 		return
 	}
 	op := &text.DrawOptions{}
-	op.GeoM.Translate(x, y+g.fonts.textDY)
+	op.GeoM.Translate(x, y+g.faces.textDY)
 	op.ColorScale.ScaleWithColor(clr)
 	op.ColorScale.ScaleAlpha(float32(alpha))
 	text.Draw(dst, s, face, op)

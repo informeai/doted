@@ -158,3 +158,14 @@ func TestChdir(t *testing.T) {
 		t.Fatal("pwd printed nothing")
 	}
 }
+
+func TestConfigureShellAndEnv(t *testing.T) {
+	r := NewRunner(t.TempDir())
+	r.Configure("/bin/sh", map[string]string{"DOTED_TEST": "from-config", "PAGER": "less"})
+	if err := r.Start(`echo "$DOTED_TEST $PAGER"`, 80, 24); err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := wait(t, r, 5*time.Second); !strings.Contains(out, "from-config less") {
+		t.Fatalf("output %q: config env should be set and override doted's defaults", out)
+	}
+}

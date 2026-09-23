@@ -4,12 +4,15 @@ package shell
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -41,6 +44,7 @@ type Event struct {
 // background.
 type Runner struct {
 	shell  string
+	env    []string // extra variables from the config, applied last
 	dir    string
 	events chan Event
 
@@ -50,11 +54,20 @@ type Runner struct {
 }
 
 func NewRunner(dir string) *Runner {
-	sh := os.Getenv("SHELL")
-	if sh == "" {
-		sh = "/bin/sh"
+	r := &Runner{dir: dir, events: make(chan Event, 256)}
+	r.Configure("", nil)
+	return r
+}
+
+// Configure sets the shell used for the next commands (empty means $SHELL,
+// then /bin/sh) and extra environment variables, which take precedence over
+// doted's own.
+func (r *Runner) Configure(shell string, env map[string]string) {
+	r.shell = cmp.Or(shell, os.Getenv("SHELL"), "/bin/sh")
+	r.env = r.env[:0]
+	for _, k := range slices.Sorted(maps.Keys(env)) {
+		r.env = append(r.env, k+"="+env[k])
 	}
-	return &Runner{shell: sh, dir: dir, events: make(chan Event, 256)}
 }
 
 func (r *Runner) Dir() string { return r.dir }
@@ -97,6 +110,7 @@ func (r *Runner) Start(cmdline string, cols, rows int) error {
 	// Colors are rendered, but screen-addressing programs are not supported
 	// yet, so keep pagers out of the way.
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor", "CLICOLOR=1", "PAGER=cat", "GIT_PAGER=cat")
+	cmd.Env = append(cmd.Env, r.env...) // later entries win
 
 	pty, err := startPTY(cmd, cols, rows)
 	if err != nil {
