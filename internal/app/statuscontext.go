@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,8 @@ type projectContext struct {
 	branch        string
 	ahead, behind int // commits not yet pushed, and not yet pulled
 	changes       gitChanges
+	gitDir        string   // which repository this is
+	refs          []string // its branches, tags and remote branches, sorted
 }
 
 // gitChanges counts the files git status lists, by kind.
@@ -111,6 +114,12 @@ func probeContext(dir, pathEnv string) projectContext {
 	}
 	if out, ok := run("git", "status", "--porcelain=v1", "--branch"); ok {
 		info.branch, info.ahead, info.behind, info.changes = parseGitStatus(out)
+		if out, ok := run("git", "rev-parse", "--absolute-git-dir"); ok {
+			info.gitDir = strings.TrimSpace(out)
+		}
+		if out, ok := run("git", "for-each-ref", "--format=%(refname)", "refs/heads", "refs/tags", "refs/remotes"); ok {
+			info.refs = parseRefs(out)
+		}
 	}
 	return info
 }
@@ -161,6 +170,20 @@ func parseGitStatus(out string) (branch string, ahead, behind int, changes gitCh
 		}
 	}
 	return branch, ahead, behind, changes
+}
+
+// parseRefs reads git for-each-ref's list, leaving out the remotes' HEAD
+// pointers.
+func parseRefs(out string) []string {
+	var refs []string
+	for _, r := range strings.Fields(out) {
+		if strings.HasPrefix(r, "refs/remotes/") && strings.HasSuffix(r, "/HEAD") {
+			continue
+		}
+		refs = append(refs, r)
+	}
+	slices.Sort(refs)
+	return refs
 }
 
 // lookIn finds the program name in the directories of pathEnv.

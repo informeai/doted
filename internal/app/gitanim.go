@@ -39,11 +39,20 @@ type branchAnim struct {
 	sparks *sparks         // around the logo's center, in logical px
 	burst  bool            // fire the new-branch sparks on the next tick
 	center [2]float64      // the logo's center on screen in the last frame
+
+	// Deleted branches and tags; see gitdelete.go.
+	deletions     []deletion
+	redSparks     *sparks // on screen, in logical px
+	delName, delY float64 // where the last frame drew the deleted name
 }
 
 // stepBranch moves the logo's sparks along; Update calls it every tick.
 func (g *Game) stepBranch() {
 	a := &g.branch
+	g.stepDeletion(time.Now())
+	if a.redSparks != nil {
+		a.redSparks.step(tickSeconds)
+	}
 	if a.sparks == nil {
 		return
 	}
@@ -57,6 +66,7 @@ func (g *Game) stepBranch() {
 // trackBranch starts the animations for a lookup that just came back, info,
 // which replaces prev.
 func (g *Game) trackBranch(prev, info projectContext, now time.Time) {
+	g.queueDeletions(prev, info, now)
 	a := &g.branch
 	if a.seen == nil {
 		a.seen = map[string]bool{}

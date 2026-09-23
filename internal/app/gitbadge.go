@@ -54,6 +54,7 @@ func (g *Game) contextCols() int {
 		for _, m := range g.gitMarks(info) {
 			n += 1 + utf8.RuneCountInString(m.text)
 		}
+		n += g.deletionCols(time.Now())
 	}
 	if rest := g.contextText(); rest != "" {
 		n += 1 + utf8.RuneCountInString(rest)
@@ -78,7 +79,11 @@ func (g *Game) drawContext(dst *ebiten.Image, x, y, right float64, now time.Time
 			g.drawText(dst, m.text, x, y, m.clr, alpha)
 			x += w
 		}
+		x = g.drawDeletion(dst, x, y, right, now)
 		x += f.cellW
+	}
+	if a := g.branch; a.redSparks != nil {
+		a.redSparks.draw(dst, 0, 0, g.scale, g.theme.Error, g.theme.ANSI[9])
 	}
 	if a := g.branch; a.sparks != nil {
 		a.sparks.draw(dst, a.center[0], a.center[1], g.scale, g.theme.Accent, g.theme.Foreground)
@@ -104,7 +109,8 @@ func (g *Game) drawGitBadge(dst *ebiten.Image, info projectContext, x, y, right,
 		return x
 	}
 	top := y + (f.lineH-size)/2
-	drawGitLogo(dst, x, top, size, g.branch.spin(now), scaleAlpha(g.theme.Foreground, alpha))
+	shake := g.branch.shake(now) * f.cellW
+	drawGitLogo(dst, x+shake, top, size, g.branch.spin(now), scaleAlpha(g.theme.Foreground, alpha))
 	g.branch.center = [2]float64{x + size/2, top + size/2}
 
 	// While switching, the name rolls from the old one; it takes the room of

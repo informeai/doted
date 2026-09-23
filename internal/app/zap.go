@@ -1,6 +1,7 @@
 package app
 
 import (
+	"image/color"
 	"math"
 	"time"
 
@@ -200,32 +201,44 @@ func (g *Game) drawBolt(dst *ebiten.Image, x, y, s, alpha float64) {
 
 // drawTrail draws the bolt's electric trail from cell from to the (possibly
 // fractional) cell head, as a zigzag just under the text, like an electric
-// underline, that changes every zapFlicker so the text stays readable. Older
-// parts of the trail are fainter.
+// underline. Older parts of the trail are fainter.
 func (g *Game) drawTrail(dst *ebiten.Image, x, y float64, from int, head, alpha float64, now time.Time) {
 	f := g.faces
-	flicker := float64(now.UnixMilli() / zapFlicker.Milliseconds())
 	amp := f.glyphH * 0.1
 	point := func(c float64) (float64, float64) {
 		col := math.Mod(c, float64(g.cols))
 		row := math.Floor(c / float64(g.cols))
-		jitter := noise(c*7.13+flicker) * amp
-		return x + (col+0.5)*f.cellW, y + row*f.lineH + f.baselineY + amp + 2*g.scale + jitter
+		return x + (col+0.5)*f.cellW, y + row*f.lineH + f.baselineY + amp + 2*g.scale
 	}
-	glow := scaleAlpha(g.theme.Accent, 0.3*alpha)
-	span := head - float64(from)
+	sameRow := func(a, b float64) bool { return math.Floor(a/float64(g.cols)) == math.Floor(b/float64(g.cols)) }
+	g.drawZigzag(dst, float64(from), head, amp, alpha, g.theme.Accent, point, sameRow, now)
+}
+
+// drawZigzag draws an electric trail in clr from cell from to the
+// (possibly fractional) cell head: a zigzag of amplitude amp around the
+// points point gives for each cell, that changes every zapFlicker so the
+// text under it stays readable, brighter near the head. sameRow says
+// whether two cells are on one row; the trail jumps between rows.
+func (g *Game) drawZigzag(dst *ebiten.Image, from, head, amp, alpha float64, clr color.RGBA, point func(c float64) (x, y float64), sameRow func(a, b float64) bool, now time.Time) {
+	flicker := float64(now.UnixMilli() / zapFlicker.Milliseconds())
+	at := func(c float64) (float32, float32) {
+		x, y := point(c)
+		return float32(x), float32(y + noise(c*7.13+flicker)*amp)
+	}
+	glow := scaleAlpha(clr, 0.3*alpha)
+	span := head - from
 	const step = 0.5 // cells between zigzag points
-	for c := float64(from); c < head; c += step {
+	for c := from; c < head; c += step {
 		next := math.Min(head, c+step)
-		if math.Floor(c/float64(g.cols)) != math.Floor(next/float64(g.cols)) {
-			continue // the bolt jumps to the next row; no segment across
+		if !sameRow(c, next) {
+			continue // no segment across rows
 		}
-		x0, y0 := point(c)
-		x1, y1 := point(next)
-		fade := 0.35 + 0.65*(c-float64(from))/math.Max(span, 1) // brighter near the head
-		core := scaleAlpha(mixRGBA(g.theme.Accent, g.theme.Foreground, 0.4), alpha*fade)
-		vector.StrokeLine(dst, float32(x0), float32(y0), float32(x1), float32(y1), float32(3.5*g.scale), glow, true)
-		vector.StrokeLine(dst, float32(x0), float32(y0), float32(x1), float32(y1), float32(1.2*g.scale), core, true)
+		x0, y0 := at(c)
+		x1, y1 := at(next)
+		fade := 0.35 + 0.65*(c-from)/math.Max(span, 1) // brighter near the head
+		core := scaleAlpha(mixRGBA(clr, g.theme.Foreground, 0.4), alpha*fade)
+		vector.StrokeLine(dst, x0, y0, x1, y1, float32(3.5*g.scale), glow, true)
+		vector.StrokeLine(dst, x0, y0, x1, y1, float32(1.2*g.scale), core, true)
 	}
 }
 
