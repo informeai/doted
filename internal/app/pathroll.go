@@ -69,11 +69,16 @@ func (r pathRoll) progress(i, n int, now time.Time) float64 {
 
 // rolling reports whether any column is still moving.
 func (r pathRoll) rolling(now time.Time) bool {
+	return !r.start.IsZero() && now.Sub(r.start) < r.duration()
+}
+
+// duration is how long the whole roll takes.
+func (r pathRoll) duration() time.Duration {
 	moving := max(len(r.from), len(r.to)) - r.first
-	if r.start.IsZero() || moving <= 0 {
-		return false
+	if moving <= 0 {
+		return 0
 	}
-	return now.Sub(r.start) < time.Duration(moving-1)*rollStaggerFor(moving)+rollChar
+	return time.Duration(moving-1)*rollStaggerFor(moving) + rollChar
 }
 
 func easeOutBack(p float64) float64 {
@@ -94,12 +99,19 @@ func (g *Game) drawPath(dst *ebiten.Image, x, y float64, cols int, now time.Time
 // drawRoll draws r's text at (x, y) in at most cols columns, in the middle
 // of its roll if it's still rolling.
 func (g *Game) drawRoll(dst *ebiten.Image, r pathRoll, x, y float64, cols int, clr color.RGBA, alpha float64, now time.Time) {
+	g.drawRollColors(dst, r, x, y, cols, clr, clr, alpha, now)
+}
+
+// drawRollColors is drawRoll with the old text in fromClr and the new one in
+// toClr; the letters that stay turn from one to the other as it rolls.
+func (g *Game) drawRollColors(dst *ebiten.Image, r pathRoll, x, y float64, cols int, fromClr, clr color.RGBA, alpha float64, now time.Time) {
 	f := g.faces
 	to := []rune(truncate(string(r.to), cols))
 	if !r.rolling(now) {
 		g.drawText(dst, string(to), x, y, clr, alpha)
 		return
 	}
+	stay := mixRGBA(fromClr, clr, math.Min(1, float64(now.Sub(r.start))/float64(r.duration())))
 	from := []rune(truncate(string(r.from), cols))
 	n := max(len(from), len(to))
 
@@ -110,11 +122,11 @@ func (g *Game) drawRoll(dst *ebiten.Image, r pathRoll, x, y float64, cols int, c
 		old, cur := runeOr(from, i), runeOr(to, i)
 		cx := x + float64(i)*f.cellW
 		if old == cur {
-			g.drawRune(row, cur, cx, y, clr, alpha)
+			g.drawRune(row, cur, cx, y, stay, alpha)
 			continue
 		}
 		p := r.progress(i, n, now)
-		g.drawRune(row, old, cx, y-p*f.lineH, clr, alpha*math.Max(0, 1-p))
+		g.drawRune(row, old, cx, y-p*f.lineH, fromClr, alpha*math.Max(0, 1-p))
 		g.drawRune(row, cur, cx, y+(1-p)*f.lineH, clr, alpha*math.Min(1, p))
 	}
 }

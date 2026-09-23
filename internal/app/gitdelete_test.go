@@ -46,27 +46,41 @@ func TestDeletionsQueueAndPlay(t *testing.T) {
 	if len(g.branch.deletions) != 2 {
 		t.Fatalf("%d deletions queued", len(g.branch.deletions))
 	}
+	d := g.branch.activeDeletion(now)
+	if d == nil || d.ref.name != "a" || d.current != "main" {
+		t.Fatalf("first deletion = %+v", d)
+	}
+	// The current branch rolls into the deleted one, and rises back at the end.
+	if string(d.in.from) != "main" || string(d.in.to) != "a" || string(d.back.to) != "main" {
+		t.Fatalf("rolls: %q → %q, back to %q", string(d.in.from), string(d.in.to), string(d.back.to))
+	}
+	if !d.in.start.Before(d.trailAt) || !d.trailAt.Before(d.fallAt) || !d.fallAt.Before(d.back.start) || d.end.Before(d.back.start.Add(d.back.duration())) {
+		t.Fatal("the steps should come in order: roll in, trail, fall, roll back")
+	}
+	// The logo becomes the kind icon, then comes back.
+	if d.iconBlend(now) != 0 || d.iconBlend(d.trailAt) != 1 || d.iconBlend(d.end) != 0 {
+		t.Fatalf("icon blend: %.2f %.2f %.2f", d.iconBlend(now), d.iconBlend(d.trailAt), d.iconBlend(d.end))
+	}
+	if g.branch.shake(d.trailAt.Add(deleteShake/8)) == 0 {
+		t.Fatal("the icon should shake while the trail runs")
+	}
 	// One after the other.
-	if d, _ := g.branch.activeDeletion(now); d == nil || d.ref.name != "a" {
-		t.Fatal("the first deletion should play first")
+	second := g.branch.deletions[1]
+	if !second.in.start.Equal(d.end) || second.ref.name != "v1" || second.ref.kind != refTag {
+		t.Fatalf("second deletion = %+v", second)
 	}
-	if g.branch.shake(now.Add(deleteShake/8)) == 0 {
-		t.Fatal("the logo should shake as a deletion starts")
-	}
-	later := now.Add(deleteDuration + time.Millisecond)
-	if d, _ := g.branch.activeDeletion(later); d == nil || d.ref.name != "v1" || d.ref.kind != refTag {
-		t.Fatalf("second deletion = %+v", d)
-	}
-	if d, _ := g.branch.activeDeletion(later.Add(deleteDuration)); d != nil {
+	if g.branch.activeDeletion(second.end) != nil {
 		t.Fatal("the queue should empty")
 	}
 }
 
 func TestLetterFall(t *testing.T) {
-	if letterFall(0, 5, deleteStrike) != 0 || letterFall(4, 5, 1) != 1 {
-		t.Fatal("letters should rest until the strike ends and all land by the end")
+	d := newDeletion(deletedRef{kind: refBranch, name: "old-feature"}, "main", time.Now())
+	if d.letterFall(0, d.fallAt) != 0 || d.letterFall(len(d.sparked)-1, d.end) != 1 {
+		t.Fatal("letters should rest until the trail ends and all land by the end")
 	}
-	if letterFall(0, 5, 0.5) <= letterFall(4, 5, 0.5) {
+	mid := d.fallAt.Add(deleteLetterFall / 2)
+	if d.letterFall(0, mid) <= d.letterFall(len(d.sparked)-1, mid) {
 		t.Fatal("the first letter should fall first")
 	}
 }

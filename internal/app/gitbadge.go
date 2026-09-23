@@ -79,7 +79,6 @@ func (g *Game) drawContext(dst *ebiten.Image, x, y, right float64, now time.Time
 			g.drawText(dst, m.text, x, y, m.clr, alpha)
 			x += w
 		}
-		x = g.drawDeletion(dst, x, y, right, now)
 		x += f.cellW
 	}
 	if a := g.branch; a.redSparks != nil {
@@ -109,9 +108,23 @@ func (g *Game) drawGitBadge(dst *ebiten.Image, info projectContext, x, y, right,
 		return x
 	}
 	top := y + (f.lineH-size)/2
+	// While a deletion plays, the logo turns into its red kind icon and
+	// the deleted name takes the branch's place; see gitdelete.go.
+	del := g.branch.activeDeletion(now)
+	blend := 0.0
+	if del != nil {
+		blend = del.iconBlend(now)
+	}
 	shake := g.branch.shake(now) * f.cellW
-	drawGitLogo(dst, x+shake, top, size, g.branch.spin(now), scaleAlpha(g.theme.Foreground, alpha))
+	drawGitLogo(dst, x+shake, top, size, g.branch.spin(now), scaleAlpha(g.theme.Foreground, alpha*(1-blend)))
+	if blend > 0 {
+		drawRefIcon(dst, del.ref.kind, x+shake, top, size, g.scale, scaleAlpha(g.theme.Error, alpha*blend))
+	}
 	g.branch.center = [2]float64{x + size/2, top + size/2}
+	if del != nil {
+		n := g.drawDeletionName(dst, del, x+iconW+gap, y, maxName, alpha, now)
+		return x + iconW + gap + float64(n)*f.cellW
+	}
 
 	// While switching, the name rolls from the old one; it takes the room of
 	// the longer of the two meanwhile.

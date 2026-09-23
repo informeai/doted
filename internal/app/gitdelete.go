@@ -14,11 +14,17 @@ import (
 	"github.com/informeai/doted/internal/fonts"
 )
 
-// Deleting a branch or a tag plays out on the status line, after the
-// current branch: the deleted name shows up in the error color behind an
-// icon for its kind, an electric trail like the Tab completion's runs
-// through the middle of it, and its letters fall away one after another,
-// turning into red sparks, while the Git logo shakes.
+// Deleting a branch or a tag plays out in the current branch's place on the
+// status line:
+//
+//  1. the current branch's name rolls into the deleted one, turning from
+//     white to the error color, while the Git logo turns into a red icon
+//     for its kind (a branch, or a tag);
+//  2. the Tab completion's electric trail runs through the middle of it,
+//     and the icon shakes;
+//  3. its letters fall away one after another, turning into red sparks;
+//  4. the current branch's name rises back into place, and the icon turns
+//     back into the logo.
 //
 // Deletions are found by comparing the repository's refs before and after
 // each lookup, so aliases, scripts and other tools count too. Several at
@@ -26,10 +32,11 @@ import (
 // summary like "5 branches".
 
 const (
-	deleteDuration    = 1100 * time.Millisecond
-	deleteAppear      = 0.12 // fractions of deleteDuration
-	deleteStrike      = 0.35
-	deleteFall        = 0.45 // one letter's fall
+	deleteTrail       = 280 * time.Millisecond // the trail's run through the name
+	deleteLetterFall  = 420 * time.Millisecond // one letter's fall
+	deleteStagger     = 35 * time.Millisecond  // between letters' falls
+	deleteMaxStagger  = 300 * time.Millisecond // cap on the last letter's delay
+	deleteIconBlend   = 150 * time.Millisecond // logo to icon and back
 	deleteShake       = 400 * time.Millisecond
 	deleteSparks      = 5 // per letter
 	maxDeletionsShown = 3
@@ -92,11 +99,50 @@ func deletedRefs(prev, cur []string) []deletedRef {
 	return []deletedRef{sum}
 }
 
-// deletion is a deleted ref's turn on the status line.
+// deletion is a deleted ref's turn in the branch's place, with its
+// timeline.
 type deletion struct {
 	ref     deletedRef
-	start   time.Time
+	current string   // the branch it replaces for a moment
+	in      pathRoll // the current branch's name rolling into the deleted one
+	back    pathRoll // and the current one rising back
+	trailAt time.Time
+	fallAt  time.Time
+	end     time.Time
 	sparked []bool // which letters already burst
+}
+
+// newDeletion lays out the timeline of ref's deletion starting at start,
+// on the branch current.
+func newDeletion(ref deletedRef, current string, start time.Time) deletion {
+	label := []rune(ref.label())
+	d := deletion{ref: ref, current: current, sparked: make([]bool, len(label))}
+	d.in = newPathRoll([]rune(current), label, start)
+	d.trailAt = start.Add(d.in.duration())
+	d.fallAt = d.trailAt.Add(deleteTrail)
+	falling := d.stagger()*time.Duration(max(0, len(label)-1)) + deleteLetterFall
+	// The branch starts rising back while the last letters still fall.
+	d.back = newPathRoll(nil, []rune(current), d.fallAt.Add(falling*7/10))
+	d.end = latest(d.back.start.Add(d.back.duration()), d.fallAt.Add(falling))
+	return d
+}
+
+// stagger is the delay between two letters' falls.
+func (d *deletion) stagger() time.Duration {
+	return min(deleteStagger, deleteMaxStagger/time.Duration(max(1, len(d.sparked)-1)))
+}
+
+// letterFall is how far letter i is into its fall at now, from 0 to 1.
+func (d *deletion) letterFall(i int, now time.Time) float64 {
+	t := now.Sub(d.fallAt) - time.Duration(i)*d.stagger()
+	return math.Max(0, math.Min(1, float64(t)/float64(deleteLetterFall)))
+}
+
+// iconBlend is how much the kind icon has replaced the logo, 0 to 1.
+func (d *deletion) iconBlend(now time.Time) float64 {
+	in := float64(now.Sub(d.in.start)) / float64(deleteIconBlend)
+	out := 1 - float64(now.Sub(d.back.start))/float64(deleteIconBlend)
+	return math.Max(0, math.Min(1, math.Min(in, out)))
 }
 
 // queueDeletions finds what was deleted between two lookups of the same
@@ -108,11 +154,12 @@ func (g *Game) queueDeletions(prev, info projectContext, now time.Time) {
 	a := &g.branch
 	start := now
 	if n := len(a.deletions); n > 0 {
-		start = latest(start, a.deletions[n-1].start.Add(deleteDuration))
+		start = latest(start, a.deletions[n-1].end)
 	}
-	for _, d := range deletedRefs(prev.refs, info.refs) {
-		a.deletions = append(a.deletions, deletion{ref: d, start: start, sparked: make([]bool, len([]rune(d.label())))})
-		start = start.Add(deleteDuration)
+	for _, ref := range deletedRefs(prev.refs, info.refs) {
+		d := newDeletion(ref, info.branch, start)
+		a.deletions = append(a.deletions, d)
+		start = d.end
 	}
 }
 
@@ -123,32 +170,24 @@ func latest(a, b time.Time) time.Time {
 	return a
 }
 
-// activeDeletion is the deletion playing now, and how far along it is.
-func (a *branchAnim) activeDeletion(now time.Time) (*deletion, float64) {
-	// Drop the ones that finished.
-	for len(a.deletions) > 0 && now.Sub(a.deletions[0].start) >= deleteDuration {
-		a.deletions = a.deletions[1:]
+// activeDeletion is the deletion playing now, if any.
+func (a *branchAnim) activeDeletion(now time.Time) *deletion {
+	for len(a.deletions) > 0 && !now.Before(a.deletions[0].end) {
+		a.deletions = a.deletions[1:] // finished
 	}
-	if len(a.deletions) == 0 || now.Before(a.deletions[0].start) {
-		return nil, 0
+	if len(a.deletions) == 0 || now.Before(a.deletions[0].in.start) {
+		return nil
 	}
-	d := &a.deletions[0]
-	return d, float64(now.Sub(d.start)) / float64(deleteDuration)
+	return &a.deletions[0]
 }
 
-// letterFall is how far letter i of n is into its fall at t, from 0 to 1.
-func letterFall(i, n int, t float64) float64 {
-	stagger := math.Min(0.04, (1-deleteStrike-deleteFall)/float64(max(1, n-1)))
-	p := (t - deleteStrike - float64(i)*stagger) / deleteFall
-	return math.Max(0, math.Min(1, p))
-}
-
-// shake is the logo's sideways offset while a deletion starts, in cells.
+// shake is the icon's sideways offset while the trail runs, in cells.
 func (a *branchAnim) shake(now time.Time) float64 {
-	if len(a.deletions) == 0 {
+	d := a.activeDeletion(now)
+	if d == nil {
 		return 0
 	}
-	t := now.Sub(a.deletions[0].start)
+	t := now.Sub(d.trailAt)
 	if t < 0 || t >= deleteShake {
 		return 0
 	}
@@ -156,20 +195,21 @@ func (a *branchAnim) shake(now time.Time) float64 {
 	return 0.25 * math.Sin(p*2*math.Pi*4) * (1 - p)
 }
 
-// deletionCols is how many cells the playing deletion takes.
+// deletionCols is how many more cells than the current branch the playing
+// deletion takes.
 func (g *Game) deletionCols(now time.Time) int {
-	d, _ := g.branch.activeDeletion(now)
+	d := g.branch.activeDeletion(now)
 	if d == nil {
 		return 0
 	}
-	return 1 + 2 + len([]rune(d.ref.label()))
+	return max(0, len(d.sparked)-len([]rune(d.current)))
 }
 
 // stepDeletion bursts the sparks of letters that just finished falling,
 // at the places the last frame drew them.
 func (g *Game) stepDeletion(now time.Time) {
 	a := &g.branch
-	d, t := a.activeDeletion(now)
+	d := a.activeDeletion(now)
 	if d == nil || g.faces == nil || !g.cfg.Animation.Particles {
 		return
 	}
@@ -177,71 +217,69 @@ func (g *Game) stepDeletion(now time.Time) {
 		a.redSparks = newSparks(uint64(now.UnixNano()))
 	}
 	for i := range d.sparked {
-		if d.sparked[i] || letterFall(i, len(d.sparked), t) < 0.85 {
+		if d.sparked[i] || d.letterFall(i, now) < 0.85 {
 			continue
 		}
 		d.sparked[i] = true
-		x, y := a.letterAt(g.faces, i, t)
+		x, y := a.letterAt(g.faces, d, i, now)
 		a.redSparks.burstAt(deleteSparks, x/g.scale, y/g.scale)
 	}
 }
 
-// letterAt is where letter i's center is at t, on screen.
-func (a *branchAnim) letterAt(f *faceSet, i int, t float64) (x, y float64) {
-	p := letterFall(i, len(a.deletions[0].sparked), t)
+// letterAt is where letter i's center is at now, on screen.
+func (a *branchAnim) letterAt(f *faceSet, d *deletion, i int, now time.Time) (x, y float64) {
+	p := d.letterFall(i, now)
 	x = a.delName + (float64(i)+0.5)*f.cellW
 	y = a.delY + f.textDY + f.glyphH/2 + p*p*f.lineH*2.2
 	return x, y
 }
 
-// drawDeletion draws the playing deletion from x on the status row at y
-// and returns where it ends.
-func (g *Game) drawDeletion(dst *ebiten.Image, x, y, right float64, now time.Time) float64 {
+// drawDeletionName draws the playing deletion in the branch name's place at
+// (x, y), in at most cols columns, and returns how many it took.
+func (g *Game) drawDeletionName(dst *ebiten.Image, d *deletion, x, y float64, cols int, alpha float64, now time.Time) int {
 	a := &g.branch
-	d, t := a.activeDeletion(now)
-	if d == nil {
-		return x
-	}
 	f := g.faces
-	label := []rune(d.ref.label())
-	iconW, gap := f.glyphH*0.9, f.cellW*0.5
-	x += f.cellW
-	if x+iconW+gap+float64(len(label))*f.cellW > right {
-		return x
-	}
 	red := g.theme.Error
-	a.delName, a.delY = x+iconW+gap, y
+	label := []rune(truncate(d.ref.label(), cols))
+	a.delName, a.delY = x, y
+	width := min(cols, max(len(label), len([]rune(d.current))))
 
-	// It fades in, then the icon and the trail fade as the letters fall.
-	appear := easeOutCubic(math.Min(1, t/deleteAppear))
-	leave := 1 - math.Max(0, math.Min(1, (t-deleteStrike)/(1-deleteStrike)))
-	drawRefIcon(dst, d.ref.kind, x, y+(f.lineH-iconW)/2, iconW, g.scale, scaleAlpha(red, appear*leave))
-
-	// An electric trail, like the one after a Tab completion, runs through
-	// the middle of the name.
-	if t > deleteAppear {
-		p := easeInOut(math.Min(1, (t-deleteAppear)/(deleteStrike-deleteAppear)))
-		n := float64(len(label))
-		midY := y + f.textDY + f.glyphH*0.55
-		point := func(c float64) (float64, float64) { return a.delName + c*f.cellW, midY }
-		sameRow := func(_, _ float64) bool { return true }
-		g.drawZigzag(dst, -0.2, -0.2+p*(n+0.4), f.glyphH*0.1, leave, red, point, sameRow, now)
+	if now.Before(d.trailAt) {
+		// The current branch rolls into the deleted one.
+		g.drawRollColors(dst, d.in, x, y, cols, badgeText, red, alpha, now)
+		return width
 	}
+
+	// The trail runs through the middle of the name, then fades as the
+	// letters fall.
+	falling := float64(d.end.Sub(d.fallAt))
+	leave := 1 - math.Max(0, math.Min(1, float64(now.Sub(d.fallAt))/falling))
+	p := easeInOut(math.Min(1, float64(now.Sub(d.trailAt))/float64(deleteTrail)))
+	n := float64(len(label))
+	midY := y + f.textDY + f.glyphH*0.55
+	point := func(c float64) (float64, float64) { return x + c*f.cellW, midY }
+	sameRow := func(_, _ float64) bool { return true }
+	g.drawZigzag(dst, -0.2, -0.2+p*(n+0.4), f.glyphH*0.1, alpha*leave, red, point, sameRow, now)
 
 	// The letters fall one after another, tumbling and fading.
 	for i, r := range label {
-		p := letterFall(i, len(label), t)
-		if p >= 1 {
+		fall := d.letterFall(i, now)
+		if fall >= 1 {
 			continue
 		}
-		cx, cy := a.letterAt(f, i, t)
-		spin := p * 1.3
+		cx, cy := a.letterAt(f, d, i, now)
+		spin := fall * 1.3
 		if i%2 == 1 {
 			spin = -spin
 		}
-		g.drawRuneTurned(dst, r, cx, cy, spin, red, appear*(1-p*p))
+		g.drawRuneTurned(dst, r, cx, cy, spin, red, alpha*(1-fall*fall))
 	}
-	return a.delName + float64(len(label))*f.cellW
+
+	// And the current branch rises back into place.
+	if !now.Before(d.back.start) {
+		g.drawRoll(dst, d.back, x, y, cols, badgeText, alpha, now)
+	}
+	return width
 }
 
 // drawRuneTurned draws r centered at (cx, cy), turned by angle radians.
