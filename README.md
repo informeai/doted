@@ -167,7 +167,7 @@ packaging/linux/build-deb.sh 0.1.0 dist amd64      # precisa de dpkg-deb
 pwsh packaging/windows/build-msi.ps1 -Version 0.1.0 # precisa do WiX 5 (dotnet tool install --global wix --version 5.0.2)
 ```
 
-O ícone do app é desenhado por `tools/icongen`, que é a única fonte da geometria. O `go generate ./assets/icon` gera a partir dele o SVG, os PNGs do Linux, o `.ico`, o `.icns` do macOS e o `rsrc_windows_amd64.syso`, que embute o ícone no `doted.exe`. Os arquivos gerados ficam no repositório, e o CI falha se estiverem desatualizados.
+O ícone do app é desenhado por `tools/icongen`, que é a única fonte da geometria. O `go generate ./assets/icon` gera a partir dele o SVG, os PNGs do Linux, o `.ico`, o `.icns` do macOS e o `rsrc_windows_amd64.syso`, que embute o ícone no `doted.exe`. Os arquivos gerados ficam no repositório. Um teste (`go test ./tools/icongen`) compara esses arquivos com uma renderização nova e falha se estiverem desatualizados. A comparação tem uma pequena tolerância, porque a renderização varia alguns níveis de cor entre processadores arm64 e amd64.
 
 Observações:
 

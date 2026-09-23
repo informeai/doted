@@ -28,16 +28,9 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go vet ./...
+      # Includes tools/icongen's check that the committed icons match their
+      # geometry (with a tolerance, since float rendering varies by CPU).
       - run: go test -race ./...
-      - name: Check the generated icons are up to date
-        if: runner.os == 'Linux'
-        run: |
-          go generate ./assets/icon
-          if [[ -n "$(git status --porcelain)" ]]; then
-            git status --short
-            echo "::error::Icons are out of date: run 'go generate ./assets/icon' and commit the result"
-            exit 1
-          fi
 
   # Packages are versioned from the tag (v1.2.3 -> 1.2.3); other builds get
   # 0.0.<run number>, which every package format accepts.

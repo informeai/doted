@@ -18,6 +18,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/tc-hib/winres"
 	"golang.org/x/image/vector"
@@ -305,8 +306,7 @@ func (p *path) roundRect(x, y, w, h, r float64, reverse bool) {
 		}
 	} else {
 		p.moveTo(point{x + r, y})
-		for i := len(corners) - 1; i >= 0; i-- {
-			c := corners[i]
+		for _, c := range slices.Backward(corners) {
 			end := c.start + math.Pi/2
 			p.lineTo(point{c.c.x + r*math.Cos(end), c.c.y + r*math.Sin(end)})
 			p.arc(c.c, r, end, c.start)
