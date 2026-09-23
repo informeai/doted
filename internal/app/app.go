@@ -14,6 +14,7 @@ import (
 
 	"github.com/informeai/doted/internal/config"
 	"github.com/informeai/doted/internal/fonts"
+	"github.com/informeai/doted/internal/history"
 	"github.com/informeai/doted/internal/jobs"
 	"github.com/informeai/doted/internal/shell"
 	"github.com/informeai/doted/internal/terminal"
@@ -27,6 +28,9 @@ const (
 	repeatInterval = 3
 
 	loginEnvTimeout = 5 * time.Second
+	// Loading the rc of a shell with a big setup (oh-my-zsh) takes a second
+	// or two; past this, commands just start without its aliases.
+	definitionsTimeout = 15 * time.Second
 )
 
 type Game struct {
@@ -49,11 +53,13 @@ type Game struct {
 	viewing  *jobs.Job // shown full screen in the job view
 	panel    panel     // the jobs list or the help
 
-	scroll      int       // visual rows scrolled up from the bottom
-	sparks      *sparks   // fired from the prompt bar while typing
-	path        pathRoll  // the directory on the status line, rolling after a cd
-	lastInput   time.Time // keeps the cursor solid while typing
-	bounceStart time.Time // when the dot cursor started hopping; see bounceElapsed
+	scroll      int              // visual rows scrolled up from the bottom
+	sparks      *sparks          // fired from the prompt bar while typing
+	historyPath string           // where typed commands are saved
+	definitions chan definitions // the shell's startup aliases and functions, once loaded
+	path        pathRoll         // the directory on the status line, rolling after a cd
+	lastInput   time.Time        // keeps the cursor solid while typing
+	bounceStart time.Time        // when the dot cursor started hopping; see bounceElapsed
 	chars       []rune
 	keyBuf      []byte
 	ptyCols     int // terminal size last given to the jobs
@@ -61,10 +67,12 @@ type Game struct {
 	lookups     map[string]lookup // cached command lookups; see commandcheck.go
 	suggest     suggestCache      // the autosuggestion; see suggest.go
 	zap         zap               // the bolt run after accepting a suggestion; see zap.go
-	clipboard   string            // doted's own clipboard; see clipboard.go
-	flashText   string            // short status-line message, e.g. "copied"
-	flashUntil  time.Time         // when flashText goes away
-	quitArmed   bool              // exit was asked once while jobs were still running
+	outSel      outputSelection   // text selected in the output with the mouse; see outputselect.go
+	cursorShape ebiten.CursorShapeType
+	clipboard   string    // doted's own clipboard; see clipboard.go
+	flashText   string    // short status-line message, e.g. "copied"
+	flashUntil  time.Time // when flashText goes away
+	quitArmed   bool      // exit was asked once while jobs were still running
 	quit        bool
 
 	// Set by Layout / Draw, read by Update.
@@ -74,6 +82,9 @@ type Game struct {
 	cols       int
 	outputRows int
 	faces      *faceSet // rebuilt when the font settings or the scale change
+	// Where the output was drawn, for the mouse to find text in it.
+	rows                       []visibleRow
+	outTop, outBottom, outLeft float64
 }
 
 type notice struct {
@@ -94,26 +105,82 @@ func New(s Settings, configPath string) (*Game, error) {
 	}
 	sb := terminal.NewScrollback(s.Config.Scrollback.Lines)
 	g := &Game{
-		configPath: configPath,
-		reloads:    make(chan reload, 1),
-		scrollback: sb,
-		parser:     terminal.NewParser(sb),
-		session:    shell.NewSession(dir),
-		jobs:       jobs.NewManager(s.Config.Scrollback.Lines),
-		scale:      1,
-		cols:       80,
-		outputRows: 24,
-		sparks:     newSparks(uint64(time.Now().UnixNano())),
+		configPath:  configPath,
+		reloads:     make(chan reload, 1),
+		scrollback:  sb,
+		parser:      terminal.NewParser(sb),
+		session:     shell.NewSession(dir),
+		jobs:        jobs.NewManager(s.Config.Scrollback.Lines),
+		scale:       1,
+		cols:        80,
+		outputRows:  24,
+		sparks:      newSparks(uint64(time.Now().UnixNano())),
+		historyPath: history.Path(),
+		definitions: make(chan definitions, 1),
 	}
 	g.apply(s)
+	g.loadHistory()
 	g.trackDir(time.Now())
 	if desktop {
 		if err := g.session.ImportLoginEnvironment(loginEnvTimeout); err != nil {
 			g.notify(terminal.Error, err.Error())
 		}
 	}
+	g.captureDefinitions()
 	g.watchConfig()
 	return g, nil
+}
+
+type definitions struct {
+	path string
+	err  error
+}
+
+// captureDefinitions loads the aliases and functions of the user's shell
+// startup files in the background; Update hands them to the session.
+func (g *Game) captureDefinitions() {
+	capture := g.session.CaptureDefinitions(definitionsTimeout)
+	if capture == nil {
+		return
+	}
+	go func() {
+		path, err := capture()
+		g.definitions <- definitions{path, err}
+	}()
+}
+
+func (g *Game) handleDefinitions() {
+	select {
+	case d := <-g.definitions:
+		if d.err != nil {
+			g.notify(terminal.Error, d.err.Error())
+			return
+		}
+		g.session.UseDefinitions(d.path)
+	default:
+	}
+}
+
+// loadHistory fills the input's history from the history file.
+func (g *Game) loadHistory() {
+	if !g.cfg.History.Save {
+		return
+	}
+	lines, err := history.Load(g.historyPath, g.cfg.History.Lines)
+	if err != nil {
+		g.notify(terminal.Error, "history: "+err.Error())
+	}
+	g.editor.SetHistory(lines, g.cfg.History.Lines)
+}
+
+// saveHistory appends a submitted line to the history file.
+func (g *Game) saveHistory(line string) {
+	if !g.cfg.History.Save || !history.Keep(line) {
+		return
+	}
+	if err := history.Append(g.historyPath, line); err != nil {
+		g.flash("history not saved: " + err.Error())
+	}
 }
 
 // launchedFromDesktop reports whether doted was opened from Finder or a
@@ -126,6 +193,7 @@ func launchedFromDesktop() bool {
 // apply switches to new settings; everything but the window size takes
 // effect immediately.
 func (g *Game) apply(s Settings) {
+	shellChanged := g.definitions != nil && g.cfg.Shell.Program != s.Config.Shell.Program
 	g.cfg = s.Config
 	g.theme = newTheme(s.Config.Colors)
 	g.family = s.Fonts
@@ -133,6 +201,9 @@ func (g *Game) apply(s Settings) {
 	g.scrollback.SetLimit(s.Config.Scrollback.Lines)
 	g.jobs.SetScrollback(s.Config.Scrollback.Lines)
 	g.session.Configure(s.Config.Shell.Program, s.Config.Shell.Env)
+	if shellChanged {
+		g.captureDefinitions() // the new shell has its own startup files
+	}
 	g.suggest = suggestCache{} // the PATH may have changed
 	for _, n := range s.Notices {
 		g.notify(terminal.System, "config: "+n)
@@ -174,6 +245,8 @@ func (g *Game) flushNotices() {
 
 func (g *Game) Update() error {
 	g.handleReloads()
+	g.handleDefinitions()
+	g.handleMouse(time.Now())
 	g.jobs.Poll(time.Now(), g.handleJobEvent)
 	g.flushNotices()
 
@@ -197,6 +270,7 @@ func (g *Game) Update() error {
 
 	if g.quit {
 		g.jobs.KillAll()
+		g.session.Close()
 		return ebiten.Termination
 	}
 	return nil
@@ -223,12 +297,18 @@ func (g *Game) handleJobEvent(j *jobs.Job, ev shell.Event) {
 		if ev.Status != "" {
 			g.notify(terminal.System, ev.Status)
 		}
+		// It ended in the foreground: the next command carries on from its
+		// environment, directory, aliases and functions.
+		g.session.Adopt(j.State())
 		if !j.Listed {
 			g.jobs.Remove(j) // an ordinary command: nothing to keep around
 		}
 		return
 	}
 	if ev.Done && j.Listed {
+		// It ended in the background, after newer commands: its state would
+		// undo theirs.
+		g.session.Discard(j.State())
 		g.notify(terminal.System, fmt.Sprintf("[%d] %s: %s", j.ID, jobResult(j), j.Command))
 	}
 }
@@ -323,6 +403,8 @@ func (g *Game) handleKeyboard() {
 		}
 	case inpututil.IsKeyJustPressed(ebiten.KeyTab):
 		g.acceptSuggestion()
+	case inpututil.IsKeyJustPressed(ebiten.KeyEscape):
+		g.outSel.clear()
 	case repeating(ebiten.KeyArrowRight):
 		switch {
 		case meta:
@@ -360,6 +442,12 @@ func (g *Game) handleAttachedKeys() {
 func (g *Game) forwardKeyboard(j *jobs.Job) {
 	if clipboardChord(ebiten.KeyV) {
 		g.pasteTo(j)
+		return
+	}
+	// Copying selected output: Ctrl+Shift+C mustn't reach the program as
+	// Ctrl+C and interrupt it.
+	if clipboardChord(ebiten.KeyC) {
+		g.copySelection()
 		return
 	}
 	g.chars = ebiten.AppendInputChars(g.chars[:0])

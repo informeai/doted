@@ -11,6 +11,7 @@ import (
 
 func (g *Game) submit() {
 	line := g.editor.Submit()
+	g.saveHistory(line)
 	g.scroll = 0
 	g.scrollback.Append(terminal.Command, g.promptText()+line, time.Now())
 
@@ -42,7 +43,9 @@ func cutBackground(cmd string) (string, bool) {
 }
 
 // runBuiltin handles the commands that must act on doted itself rather than
-// on a child process.
+// on a child process. Everything else, cd and clear included, goes to the
+// shell: its cd moves doted too (see shell.Session.Adopt), and the screen
+// clear clear prints is understood by the parser.
 func (g *Game) runBuiltin(cmd string) bool {
 	name, arg, _ := strings.Cut(cmd, " ")
 	arg = strings.TrimSpace(arg)
@@ -52,12 +55,6 @@ func (g *Game) runBuiltin(cmd string) bool {
 	switch name {
 	case "exit", "quit":
 		g.requestQuit()
-	case "clear":
-		g.scrollback.Clear()
-	case "cd":
-		if err := g.session.Chdir(arg); err != nil {
-			g.scrollback.Append(terminal.Error, "cd: "+err.Error(), time.Now())
-		}
 	case "jobs":
 		g.openPanel()
 	case "help":

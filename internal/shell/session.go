@@ -43,6 +43,13 @@ type Session struct {
 	base  []string // environment commands start from
 	env   []string // extra variables from the config, applied last
 	dir   string
+
+	// Persistent state; see state.go.
+	stateDir string          // temporary files, removed by Close
+	defsPath string          // aliases and functions commands start from
+	names    map[string]bool // the names defsPath defines
+	seq      int             // numbers each command's state files
+	oldpwd   string          // the previous directory, for cd -
 }
 
 func NewSession(dir string) *Session {
@@ -90,7 +97,11 @@ func (s *Session) ImportLoginEnvironment(timeout time.Duration) error {
 // then /bin/sh) and extra environment variables, which take precedence over
 // doted's own.
 func (s *Session) Configure(shell string, env map[string]string) {
+	old := s.shell
 	s.shell = cmp.Or(shell, os.Getenv("SHELL"), "/bin/sh")
+	if old != "" && kindOf(old) != kindOf(s.shell) {
+		s.defsPath, s.names = "", nil // one shell's functions don't parse in another
+	}
 	s.env = s.env[:0]
 	for _, k := range slices.Sorted(maps.Keys(env)) {
 		s.env = append(s.env, k+"="+env[k])
@@ -125,8 +136,12 @@ func (s *Session) Chdir(path string) error {
 // Start launches cmdline via `$SHELL -c` on its own terminal of cols×rows
 // cells. Any number of processes can run at once.
 func (s *Session) Start(cmdline string, cols, rows int) (*Process, error) {
+	args, state, err := s.commandArgs(cmdline)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(ctx, s.shell, "-c", cmdline)
+	cmd := exec.CommandContext(ctx, s.shell, args...)
 	cmd.Dir = s.dir
 	// Colors are rendered, but screen-addressing programs are not supported
 	// yet, so keep pagers out of the way.
@@ -138,7 +153,7 @@ func (s *Session) Start(cmdline string, cols, rows int) (*Process, error) {
 		cancel()
 		return nil, err
 	}
-	p := &Process{events: make(chan Event, 256), pty: pty, cancel: cancel, running: true}
+	p := &Process{events: make(chan Event, 256), pty: pty, cancel: cancel, running: true, state: state}
 
 	go func() {
 		readDone := make(chan struct{})
@@ -174,7 +189,12 @@ type Process struct {
 	pty     *os.File
 	cancel  context.CancelFunc
 	running bool
+	state   string // prefix of the state files the command writes; see Session.Adopt
 }
+
+// State is where the command leaves the shell state it ended with, for
+// Session.Adopt or Session.Discard once it finished.
+func (p *Process) State() string { return p.state }
 
 // Running reports whether the command has not finished yet (as far as the
 // events drained so far tell).

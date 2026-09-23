@@ -60,8 +60,12 @@ func (s *smoke) Update() error {
 		s.check(s.panel.open && s.panel.kind == panelHelp, "help panel not open")
 	case 200:
 		s.check(strings.Contains(mainText(s.Game), "[1] done"), "no completion notice for job 1")
-		s.pickHelp(0)
-		s.check(s.editor.Text() == "cd ", "picking cd from help left %q on the prompt", s.editor.Text())
+		for i, c := range helpCommands {
+			if c.usage == "fg [n]" {
+				s.pickHelp(i)
+			}
+		}
+		s.check(s.editor.Text() == "fg ", "picking fg from help left %q on the prompt", s.editor.Text())
 		s.jobs.KillAll()
 		return ebiten.Termination
 	}
@@ -73,6 +77,12 @@ func (s *smoke) Update() error {
 
 func TestMain(m *testing.M) {
 	os.Setenv("TERM", "xterm-256color") // as if started from a terminal
+	// Keep the test away from the user's rc files and history.
+	home, _ := os.MkdirTemp("", "doted-smoke-home-")
+	defer os.RemoveAll(home)
+	os.Setenv("HOME", home)
+	os.Setenv("ZDOTDIR", home)
+	os.Setenv("XDG_DATA_HOME", home)
 	g, err := New(DefaultSettings(), filepath.Join(os.TempDir(), "doted-smoke-config.toml"))
 	if err != nil {
 		panic(err)

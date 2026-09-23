@@ -47,6 +47,13 @@ particles = true
 [scrollback]
 lines = 10000
 
+[history]
+# Keep typed commands across sessions, in ~/.local/share/doted/history (or
+# $XDG_DATA_HOME/doted/history). A command starting with a space is never
+# saved.
+save = true
+lines = 10000
+
 [shell]
 # Program used to run commands as `<program> -c "<command>"`. Empty uses $SHELL.
 program = ""

@@ -11,10 +11,16 @@ import (
 func newTestGame(t *testing.T) *Game {
 	t.Helper()
 	t.Setenv("TERM", "xterm-256color") // as if started from a terminal
+	// Keep tests away from the user's rc files and history.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ZDOTDIR", home)
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	g, err := New(DefaultSettings(), filepath.Join(t.TempDir(), "config.toml"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(g.session.Close)
 	return g
 }
 
@@ -77,11 +83,11 @@ func TestHelpPanel(t *testing.T) {
 	// Picking a command puts it on the prompt, replacing what was typed.
 	g.editor.Insert([]rune("half-typed")...)
 	for i, c := range helpCommands {
-		if c.usage == "cd [dir]" {
+		if c.usage == "fg [n]" {
 			g.pickHelp(i)
 		}
 	}
-	if g.panel.open || g.editor.Text() != "cd " || g.editor.Cursor() != len("cd ") {
+	if g.panel.open || g.editor.Text() != "fg " || g.editor.Cursor() != len("fg ") {
 		t.Fatalf("panel open %v, prompt %q", g.panel.open, g.editor.Text())
 	}
 
@@ -92,7 +98,7 @@ func TestHelpPanel(t *testing.T) {
 			g.pickHelp(i)
 		}
 	}
-	if g.panel.open || g.editor.Text() != "cd " {
+	if g.panel.open || g.editor.Text() != "fg " {
 		t.Fatalf("panel open %v, prompt %q", g.panel.open, g.editor.Text())
 	}
 }

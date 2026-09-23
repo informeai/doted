@@ -15,10 +15,9 @@ type helpCommand struct {
 	desc   string
 }
 
-// helpCommands are doted's builtins plus the one syntax it adds.
+// helpCommands are doted's builtins plus the one syntax it adds. cd, clear
+// and the rest are the shell's own.
 var helpCommands = []helpCommand{
-	{"cd [dir]", "cd ", "change the directory for the next commands (~ works)"},
-	{"clear", "clear", "clear the screen"},
 	{"jobs", "jobs", "list background jobs"},
 	{"fg [n]", "fg ", "open job n, or the newest one"},
 	{"<command> &", "", "start a command in the background"},
@@ -30,6 +29,7 @@ var helpKeys = []struct{ keys, desc string }{
 	{"enter · ↑↓", "run the line · browse history"},
 	{"tab · →", "accept the suggestion shown after the cursor"},
 	{"shift+←→", "select text (also shift+home/end); typing replaces it"},
+	{"mouse drag", "select output (double-click a word, triple-click a line)"},
 	{"cmd+c · x · v", "copy · cut · paste (ctrl+shift+c/x/v on linux/windows)"},
 	{"ctrl+y", "paste back what ctrl+w or ctrl+u deleted"},
 	{"ctrl+c", "interrupt the running command, or discard the line"},

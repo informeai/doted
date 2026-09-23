@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"slices"
+	"strings"
 	"unicode"
 )
 
@@ -15,9 +16,25 @@ type Editor struct {
 	selecting bool
 	anchor    int
 
-	history []string
-	histPos int    // == len(history) while editing a fresh line
-	draft   []rune // the fresh line, kept while browsing history
+	history      []string
+	historyLimit int    // most lines kept; 0 is no limit
+	histPos      int    // == len(history) while editing a fresh line
+	draft        []rune // the fresh line, kept while browsing history
+}
+
+// SetHistory replaces the history (oldest first) and caps it at limit lines
+// from now on (0 for no limit).
+func (e *Editor) SetHistory(lines []string, limit int) {
+	e.history = slices.Clone(lines)
+	e.historyLimit = limit
+	e.trimHistory()
+	e.histPos = len(e.history)
+}
+
+func (e *Editor) trimHistory() {
+	if over := len(e.history) - e.historyLimit; e.historyLimit > 0 && over > 0 {
+		e.history = slices.Delete(e.history, 0, over)
+	}
 }
 
 func (e *Editor) Text() string { return string(e.buf) }
@@ -173,11 +190,15 @@ func (e *Editor) Reset() {
 	e.draft = nil
 }
 
-// Submit returns the current line, records it in history and clears the input.
+// Submit returns the current line, records it in history and clears the
+// input. As in bash's HISTCONTROL=ignorespace, a line starting with a space
+// stays out of the history.
 func (e *Editor) Submit() string {
 	line := string(e.buf)
-	if line != "" && (len(e.history) == 0 || e.history[len(e.history)-1] != line) {
+	if strings.TrimSpace(line) != "" && !strings.HasPrefix(line, " ") &&
+		(len(e.history) == 0 || e.history[len(e.history)-1] != line) {
 		e.history = append(e.history, line)
+		e.trimHistory()
 	}
 	e.Reset()
 	return line

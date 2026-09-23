@@ -40,7 +40,9 @@ func TestClassifyCommand(t *testing.T) {
 
 	for line, want := range map[string]commandKind{
 		"":                     commandNone,
-		"cd /tmp":              commandBuiltin,
+		"cd /tmp":              commandFound, // the shell's own, no longer doted's
+		"clear":                commandFound,
+		"jobs":                 commandBuiltin,
 		"help":                 commandBuiltin,
 		"exit 3 &":             commandFound, // with & it runs in the shell, where exit is a builtin
 		"sh -c true":           commandFound, // in the PATH

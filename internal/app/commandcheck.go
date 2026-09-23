@@ -11,7 +11,7 @@ import (
 
 // As you type, the command word of the input is colored by what it is:
 // doted's own commands in the accent color, programs that exist (and shell
-// builtins) in green, and anything else in red.
+// builtins, aliases and functions) in green, and anything else in red.
 
 type commandKind int
 
@@ -24,7 +24,7 @@ const (
 
 // dotedBuiltins are the names runBuiltin handles.
 var dotedBuiltins = map[string]bool{
-	"cd": true, "clear": true, "jobs": true, "fg": true, "help": true, "exit": true, "quit": true,
+	"jobs": true, "fg": true, "help": true, "exit": true, "quit": true,
 }
 
 // lookupTTL is how long a lookup is trusted, so a program installed while
@@ -81,7 +81,7 @@ func (g *Game) classifyCommand(line string, now time.Time) commandKind {
 	switch {
 	case dotedBuiltins[word] && !background: // `exit 3 &` goes to the shell
 		return commandBuiltin
-	case shell.IsShellBuiltin(word):
+	case shell.IsShellBuiltin(word), g.session.IsDefined(word): // aliases and functions too
 		return commandFound
 	}
 

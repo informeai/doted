@@ -57,7 +57,7 @@ func TestTrackDir(t *testing.T) {
 		t.Fatalf("startup: path %q rolling %v, want the directory shown still", first, g.path.rolling(time.Now()))
 	}
 
-	g.runBuiltin("cd " + t.TempDir())
+	g.session.Chdir(t.TempDir())
 	now := time.Now()
 	g.trackDir(now)
 	if string(g.path.from) != first || string(g.path.to) == first || !g.path.rolling(now) {
@@ -66,7 +66,7 @@ func TestTrackDir(t *testing.T) {
 
 	// With animations off the new directory just appears.
 	g.cfg.Animation.Enabled = false
-	g.runBuiltin("cd " + t.TempDir())
+	g.session.Chdir(t.TempDir())
 	g.trackDir(time.Now())
 	if g.path.rolling(time.Now()) {
 		t.Fatal("rolled with animations off")

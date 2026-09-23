@@ -37,6 +37,10 @@ go build -o doted .
 
 Cada comando roda em `$SHELL -c` dentro de um pseudo-terminal, no diretório atual do doted. Enquanto um comando está rodando, o teclado vai direto para ele, então prompts de senha, perguntas `y/n` e REPLs como `python3` funcionam.
 
+Com zsh ou bash, o shell se comporta como uma sessão contínua: variáveis exportadas (`export`, `source .env`, `nvm use`), o diretório (inclusive um `cd` dentro de `cd pasta && make`), aliases e funções passam de um comando para o próximo. Ao abrir, o doted carrega os aliases e funções do seu `~/.zshrc` ou `~/.bashrc` em segundo plano, e eles contam como comandos válidos na coloração e nas sugestões. Cada comando continua sendo um processo próprio, por isso eles podem rodar lado a lado e ir para o background; o estado de um comando que terminou em background é descartado, para não desfazer o que veio depois. Variáveis sem `export` não passam de um comando para o outro. Em outros shells (sh, fish), cada comando começa do zero, como antes.
+
+O histórico de comandos é salvo em `~/.local/share/doted/history` (ou `$XDG_DATA_HOME/doted/history`) e volta quando você abre o doted de novo, alimentando o ↑ e as sugestões. Como no bash, um comando que começa com espaço não é salvo, o que é útil para linhas com senhas ou tokens.
+
 Enquanto você digita, a palavra do comando muda de cor: na cor de destaque se for um comando interno do doted, verde se existir no sistema (no `PATH`, um caminho executável como `./build.sh` ou um comando embutido do shell como `echo` e `export`) e vermelha se não existir. O `PATH` consultado é o mesmo que os comandos recebem.
 
 Também como no fish, uma sugestão aparece apagada depois do cursor enquanto você digita, e Tab (ou → no fim da linha) aceita. Ela vem, nesta ordem: do comando mais recente do histórico que começa com o que você digitou; do nome de um comando (do doted, embutido do shell ou do `PATH`); ou de um arquivo ou pasta, no último argumento (`cd Pro` → `cd Projects/`). Entre nomes de comando, o mais curto vence; no empate, os do doted vêm primeiro. Ao aceitar com Tab, a bolinha do cursor some e um sublinhado elétrico corre sob o texto até o fim do comando completado, onde a bolinha reaparece com algumas faíscas (só com o cursor `dot` e as animações ligadas).
@@ -49,7 +53,8 @@ Também como no fish, uma sugestão aparece apagada depois do cursor enquanto vo
 | ↑ / ↓ | navega no histórico | envia as setas ao programa |
 | Tab, → (no fim da linha) | aceita a sugestão mostrada depois do cursor | envia ao programa |
 | Shift+←/→, Shift+Home/End | seleciona texto, marcado com pontinhos acima dos caracteres; digitar ou apagar substitui a seleção | — |
-| Cmd+C / Cmd+X / Cmd+V (Ctrl+Shift+C/X/V no Linux e Windows) | copia, recorta e cola a seleção | cola no programa |
+| Arrastar o mouse na saída (2 cliques: palavra, 3 cliques: linha) | seleciona o texto da saída | seleciona o texto da saída |
+| Cmd+C / Cmd+X / Cmd+V (Ctrl+Shift+C/X/V no Linux e Windows) | copia (a seleção da saída, se houver), recorta e cola | copia a seleção da saída; cola no programa |
 | Ctrl+C | descarta a linha | interrompe o programa (SIGINT) |
 | Ctrl+B | — | manda o comando para o background |
 | Ctrl+T | abre a lista de jobs | — |
@@ -60,7 +65,7 @@ Também como no fish, uma sugestão aparece apagada depois do cursor enquanto vo
 | Ctrl+Y | cola de volta o que o Ctrl+U/Ctrl+W apagou | envia ao programa |
 | PgUp / PgDn, roda do mouse | rola o histórico | rola o histórico |
 
-A área de transferência é do próprio doted: guarda o que você copia, recorta ou apaga com Ctrl+U/Ctrl+W, mas ainda não troca texto com outros apps, porque o Ebitengine não tem acesso à área de transferência do sistema. Ao copiar ou colar, a barra de status confirma a ação por um instante.
+Para copiar a saída de um comando, arraste o mouse sobre ela: o trecho ganha um fundo na cor de destaque, e arrastar além do topo ou da base rola o histórico. A seleção fica presa ao texto, então não se desloca quando chega saída nova; Esc ou um clique a desfazem. A área de transferência é do próprio doted: guarda o que você copia, recorta ou apaga com Ctrl+U/Ctrl+W, mas ainda não troca texto com outros apps, porque o Ebitengine não tem acesso à área de transferência do sistema. Ao copiar ou colar, a barra de status confirma a ação por um instante.
 
 No macOS, Cmd+←/→ vai para o início/fim da linha, Cmd+Backspace apaga até o início e Option+Backspace apaga a palavra anterior.
 
@@ -68,8 +73,8 @@ No macOS, Cmd+←/→ vai para o início/fim da linha, Cmd+Backspace apaga até 
 
 Digite `help` para ver a lista abaixo e os atalhos dentro do próprio doted (a barra de status lembra disso). Na lista, ↑/↓ seleciona um comando, Enter coloca ele no prompt para você completar e executar, e Esc fecha.
 
-- `cd [dir]`: muda o diretório usado pelos próximos comandos (aceita `~`)
-- `clear`: limpa a tela
+`cd`, `clear` e os demais comandos são os do próprio shell: o `cd` também muda o diretório do doted (e `cd -` volta para o anterior), e o `clear` limpa a tela.
+
 - `jobs`: abre a lista de jobs
 - `fg [n]`: abre o job `n` (ou o mais recente); também aceita `fg %n`
 - `help`: lista os comandos e atalhos
@@ -145,6 +150,7 @@ EDITOR = "nvim"
 | `[cursor]` | `style` (padrão `dot`: uma bolinha na cor do texto que fica na cor de destaque e pula enquanto você digita), `animate` |
 | `[animation]` | `enabled` (liga ou desliga todas as animações), `fade_in_ms`, `particles` (as faíscas da barra) |
 | `[scrollback]` | `lines` |
+| `[history]` | `save` (guardar os comandos entre sessões), `lines` |
 | `[shell]` | `program`, `[shell.env]` |
 | `[colors]` | `background`, `foreground`, `muted`, `accent`, `error`, `border`, `cursor` |
 | `[colors.normal]` / `[colors.bright]` | `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white` |

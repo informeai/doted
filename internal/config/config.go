@@ -29,7 +29,13 @@ type Config struct {
 	Animation  Animation  `toml:"animation"`
 	Scrollback Scrollback `toml:"scrollback"`
 	Shell      Shell      `toml:"shell"`
+	History    History    `toml:"history"`
 	Colors     Colors     `toml:"colors"`
+}
+
+type History struct {
+	Save  bool `toml:"save"`
+	Lines int  `toml:"lines"`
 }
 
 type Font struct {
@@ -211,6 +217,7 @@ func (c Config) validate() error {
 	}
 	check(c.Animation.FadeInMs >= 0 && c.Animation.FadeInMs <= 5000, "animation.fade_in_ms must be between 0 and 5000")
 	check(c.Scrollback.Lines >= 100, "scrollback.lines must be at least 100")
+	check(c.History.Lines >= 100, "history.lines must be at least 100")
 	return errors.Join(errs...)
 }
 

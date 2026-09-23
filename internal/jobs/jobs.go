@@ -43,6 +43,9 @@ func (j *Job) AltScreen() bool { return j.parser.AltScreen }
 
 func (j *Job) Write(b []byte) error { return j.proc.Write(b) }
 
+// State is where the job's shell left its state; see shell.Session.Adopt.
+func (j *Job) State() string { return j.proc.State() }
+
 func (j *Job) Kill() { j.proc.Kill() }
 
 // Elapsed is how long the job ran, or has been running so far.

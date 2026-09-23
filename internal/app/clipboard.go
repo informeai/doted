@@ -45,8 +45,13 @@ func (g *Game) handleClipboardKeys() bool {
 	return true
 }
 
+// copySelection copies the text selected in the output, or else in the
+// input line.
 func (g *Game) copySelection() {
-	text := g.editor.SelectedText()
+	text := g.selectedOutput()
+	if text == "" {
+		text = g.editor.SelectedText()
+	}
 	if text == "" {
 		g.flash("nothing selected · shift+←→ selects")
 		return

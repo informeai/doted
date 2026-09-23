@@ -113,6 +113,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	case g.attached != nil:
 		jobCursor = g.parser.Col()
 	}
+	g.outTop, g.outBottom, g.outLeft = pad, outputBottom, pad
 	g.drawScrollback(screen, sb, jobCursor, pad, outputBottom, now)
 	switch {
 	case g.panel.open && g.panel.kind == panelHelp:
@@ -277,6 +278,7 @@ func (g *Game) drawScrollback(dst *ebiten.Image, sb *terminal.Scrollback, cursor
 	y := bottom
 	skip := g.scroll
 	last := sb.Len() - 1
+	g.rows = g.rows[:0]
 	for i := last; i >= 0 && y-f.lineH >= top; i-- {
 		line := sb.At(i)
 		rows := terminal.Wrap(line.Cells, g.cols)
@@ -294,6 +296,9 @@ func (g *Game) drawScrollback(dst *ebiten.Image, sb *terminal.Scrollback, cursor
 				continue
 			}
 			y -= f.lineH
+			row := visibleRow{seq: sb.Seq(i), start: j * g.cols, n: len(rows[j]), y: y}
+			g.rows = append(g.rows, row)
+			g.drawRowSelection(dst, sb, row, len(line.Cells), pad, y+dy)
 			g.drawCells(dst, rows[j], pad, y+dy, line.Kind, alpha)
 			// Commands that were run keep the prompt bar they were typed at.
 			if j == 0 && line.Kind == terminal.Command && g.cfg.Prompt.Style == config.PromptBar {

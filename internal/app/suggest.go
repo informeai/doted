@@ -70,8 +70,9 @@ func (g *Game) computeSuggestion(line string, now time.Time) string {
 	start, end := commandWord(runes)
 	if end == len(runes) { // still typing the command word
 		word := string(runes[start:end])
-		// Ties go to doted's own commands, then shell builtins, then programs.
-		return completeFrom(word, g.dotedNames(), shell.ShellBuiltins(), g.pathCommands(now))
+		// Ties go to doted's own commands, then the user's aliases and
+		// functions, then shell builtins, then programs.
+		return completeFrom(word, g.dotedNames(), g.session.Definitions(), shell.ShellBuiltins(), g.pathCommands(now))
 	}
 	// Otherwise complete the last argument as a path.
 	if unicode.IsSpace(runes[len(runes)-1]) {

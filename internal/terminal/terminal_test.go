@@ -213,3 +213,48 @@ func TestEditorCutAndKillReturnText(t *testing.T) {
 		t.Fatalf("Ctrl+U removed %q, line %q", got, e.Text())
 	}
 }
+
+func TestEditorHistoryLimitAndIgnoreSpace(t *testing.T) {
+	var e Editor
+	e.SetHistory([]string{"a", "b", "c"}, 2)
+	if h := e.History(); len(h) != 2 || h[0] != "b" {
+		t.Fatalf("SetHistory kept %q, want the newest 2", h)
+	}
+	e.Insert([]rune(" secret")...)
+	e.Submit()
+	e.Insert([]rune("d")...)
+	e.Submit()
+	if h := e.History(); len(h) != 2 || h[0] != "c" || h[1] != "d" {
+		t.Fatalf("history = %q, want c and d (limit 2, space-prefixed line left out)", h)
+	}
+}
+
+func TestScrollbackSeqSurvivesTrimmingAndClearing(t *testing.T) {
+	s := NewScrollback(4)
+	s.Append(Output, "a\nb\nc", time.Now())
+	seqB := s.Seq(1)
+	for range 5 { // past limit+limit/4: the oldest lines go
+		s.Append(Output, "x", time.Now())
+	}
+	if _, ok := s.Index(seqB); ok {
+		t.Fatal("b was trimmed, but its seq still resolves")
+	}
+	s.Append(Output, "y", time.Now())
+	seqY := s.Seq(s.Len() - 1)
+	s.Append(Output, "z", time.Now()) // shifts nothing, but check y still resolves to y
+	if i, ok := s.Index(seqY); !ok || s.At(i).Text() != "y" {
+		t.Fatalf("seq of y resolves to %d, %v", i, ok)
+	}
+	last := s.Seq(s.Len() - 1)
+	if i, ok := s.Index(last); !ok || i != s.Len()-1 {
+		t.Fatalf("Index(Seq(last)) = %d, %v", i, ok)
+	}
+	s.Clear()
+	if _, ok := s.Index(last); ok {
+		t.Fatal("a cleared line should be gone")
+	}
+	s.Append(Output, "new", time.Now())
+	if s.Seq(0) <= last {
+		t.Fatalf("a line after Clear got seq %d, not after %d", s.Seq(0), last)
+	}
+}
