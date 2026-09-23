@@ -106,8 +106,8 @@ size = 16
 line_height = 1.4
 
 [cursor]
-style = "bar"              # block, bar ou underline
-blink = false
+style = "bar"              # dot, block, bar ou underline
+animate = false            # a bolinha pula ao digitar e os outros estilos piscam
 
 [prompt]
 symbol = "$ "
@@ -132,7 +132,7 @@ EDITOR = "nvim"
 | `[font]` | `family`, `size`, `line_height` |
 | `[window]` | `width`, `height` (só na inicialização), `padding` |
 | `[prompt]` | `symbol` |
-| `[cursor]` | `style`, `blink` |
+| `[cursor]` | `style` (padrão `dot`: uma bolinha na cor de destaque que pula enquanto você digita), `animate` |
 | `[animation]` | `enabled`, `fade_in_ms` |
 | `[scrollback]` | `lines` |
 | `[shell]` | `program`, `[shell.env]` |

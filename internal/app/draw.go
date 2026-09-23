@@ -21,8 +21,16 @@ import (
 
 const (
 	blinkPeriod = time.Second
-	blinkHold   = 600 * time.Millisecond // cursor stays solid after a keystroke
-	dimAlpha    = 0.6
+	blinkHold   = 600 * time.Millisecond // the cursor holds still after a keystroke
+
+	// The dot cursor hops like a ball while you type: one hop per
+	// bouncePeriod, rising bounceHeight rows at the top, and squashing by up
+	// to bounceSquash as it lands.
+	bouncePeriod  = 450 * time.Millisecond
+	bounceHeight  = 0.3
+	bounceSquash  = 0.22
+	bounceContact = 0.1 // fraction of the period spent touching the ground
+	dimAlpha      = 0.6
 )
 
 func fontVariant(a terminal.Attr) fonts.Variant {
@@ -44,6 +52,7 @@ type faceSet struct {
 	cellW      float64
 	lineH      float64
 	textDY     float64 // centers glyphs vertically inside a row
+	baselineY  float64 // offset of the text baseline from the row top
 	underlineY float64 // offset from the row top
 }
 
@@ -56,7 +65,8 @@ func newFaceSet(fam fonts.Family, cfg config.Font, scale float64) *faceSet {
 	glyphH := m.HAscent + m.HDescent
 	f.lineH = math.Ceil(glyphH * cfg.LineHeight)
 	f.textDY = (f.lineH - glyphH) / 2
-	f.underlineY = f.textDY + m.HAscent + scale
+	f.baselineY = f.textDY + m.HAscent
+	f.underlineY = f.baselineY + scale
 	f.cellW = text.AdvanceAt("M", 1, f.faces[0])
 	return f
 }
@@ -243,14 +253,24 @@ func (g *Game) entrance(age time.Duration) (alpha, dy float64) {
 	return ease, (1 - ease) * g.faces.lineH * 0.35
 }
 
-// drawCursor draws the cursor in the configured style. A block cursor
-// redraws the rune under it (if any) in the background color.
+// drawCursor draws the cursor in the configured style. The dot hops while
+// the user types and rests otherwise; the other styles blink while idle. A
+// block cursor redraws the rune under it (if any) in the background color.
 func (g *Game) drawCursor(dst *ebiten.Image, x, y float64, under rune, now time.Time) {
-	solid := !g.cfg.Cursor.Blink || now.Sub(g.lastInput) < blinkHold
-	if !solid && now.UnixMilli()%blinkPeriod.Milliseconds() >= blinkPeriod.Milliseconds()/2 {
+	f := g.faces
+	if g.cfg.Cursor.Style == config.CursorDot {
+		// Motion follows the global animation switch too.
+		var t time.Duration
+		if g.cfg.Cursor.Animate && g.cfg.Animation.Enabled {
+			t, _ = bounceElapsed(now, g.bounceStart, g.lastInput)
+		}
+		g.drawDotCursor(dst, x, y, t)
 		return
 	}
-	f := g.faces
+	resting := now.Sub(g.lastInput) < blinkHold || !g.cfg.Cursor.Animate
+	if !resting && now.UnixMilli()%blinkPeriod.Milliseconds() >= blinkPeriod.Milliseconds()/2 {
+		return
+	}
 	thick := math.Max(2, math.Round(2*g.scale))
 	switch g.cfg.Cursor.Style {
 	case config.CursorBar:
@@ -263,6 +283,71 @@ func (g *Game) drawCursor(dst *ebiten.Image, x, y float64, under rune, now time.
 			g.drawText(dst, string(under), x, y, g.theme.Background, 1)
 		}
 	}
+}
+
+// drawDotCursor draws a ball in the accent color resting on the text
+// baseline of the cell at (x, y), t into its bounce (0 is at rest).
+func (g *Game) drawDotCursor(dst *ebiten.Image, x, y float64, t time.Duration) {
+	f := g.faces
+	lift, squash := dotBounce(t)
+	r := f.cellW * 0.32
+	rx := r * (1 + bounceSquash*squash)
+	ry := r * (1 - bounceSquash*squash)
+	cx := x + f.cellW/2
+	cy := y + f.baselineY - ry - lift*bounceHeight*f.lineH
+	fillEllipse(dst, cx, cy, rx, ry, g.theme.Accent)
+}
+
+// bounceElapsed says how far the dot is into its bouncing, which started at
+// start with the first keystroke. It keeps bouncing while keys keep coming
+// and, once they stop, finishes the hop the last key fell in, so it always
+// lands instead of freezing mid-air. bouncing is false at rest.
+func bounceElapsed(now, start, lastKey time.Time) (t time.Duration, bouncing bool) {
+	if start.IsZero() || lastKey.Before(start) {
+		return 0, false
+	}
+	hops := lastKey.Sub(start)/bouncePeriod + 1
+	if !now.Before(start.Add(hops * bouncePeriod)) {
+		return 0, false
+	}
+	return now.Sub(start), true
+}
+
+// dotBounce returns how high the dot is at t (0 on the ground, 1 at the top
+// of the hop) and how squashed it is (1 at the moment of impact). The hop is
+// a parabola, like a ball under gravity; the squash happens only while the
+// ball touches the ground.
+func dotBounce(t time.Duration) (lift, squash float64) {
+	if t <= 0 {
+		return 0, 0
+	}
+	p := math.Mod(float64(t)/float64(bouncePeriod), 1)
+	// The contact window straddles the period boundary: half at the end of a
+	// hop, half at the start of the next.
+	half := bounceContact / 2
+	if d := math.Min(p, 1-p); d < half {
+		return 0, 1 - d/half
+	}
+	q := (p - half) / (1 - bounceContact) // 0..1 across the airborne part
+	return 4 * q * (1 - q), 0
+}
+
+// fillEllipse draws an anti-aliased filled ellipse.
+func fillEllipse(dst *ebiten.Image, cx, cy, rx, ry float64, clr color.RGBA) {
+	const k = 0.5522847498 // control distance for a quarter circle
+	var p vector.Path
+	x, y := float32(cx), float32(cy)
+	a, b := float32(rx), float32(ry)
+	ka, kb := float32(k*rx), float32(k*ry)
+	p.MoveTo(x+a, y)
+	p.CubicTo(x+a, y+kb, x+ka, y+b, x, y+b)
+	p.CubicTo(x-ka, y+b, x-a, y+kb, x-a, y)
+	p.CubicTo(x-a, y-kb, x-ka, y-b, x, y-b)
+	p.CubicTo(x+ka, y-b, x+a, y-kb, x+a, y)
+	p.Close()
+	op := &vector.DrawPathOptions{AntiAlias: true}
+	op.ColorScale.ScaleWithColor(clr)
+	vector.FillPath(dst, &p, &vector.FillOptions{}, op)
 }
 
 func (g *Game) drawStatus(dst *ebiten.Image, left, y, right float64, now time.Time) {

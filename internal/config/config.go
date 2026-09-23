@@ -51,6 +51,7 @@ type Prompt struct {
 type CursorStyle string
 
 const (
+	CursorDot       CursorStyle = "dot"
 	CursorBlock     CursorStyle = "block"
 	CursorBar       CursorStyle = "bar"
 	CursorUnderline CursorStyle = "underline"
@@ -58,7 +59,10 @@ const (
 
 type Cursor struct {
 	Style CursorStyle `toml:"style"`
-	Blink bool        `toml:"blink"`
+	// Animate makes the dot hop while typing and the other styles blink.
+	Animate bool `toml:"animate"`
+	// Blink is Animate's old name, still honored in existing files.
+	Blink *bool `toml:"blink"`
 }
 
 type Animation struct {
@@ -162,6 +166,11 @@ func Load(path string) (cfg Config, warnings []string, err error) {
 	for _, key := range md.Undecoded() {
 		warnings = append(warnings, fmt.Sprintf("%s: unknown setting %q", path, key.String()))
 	}
+	if cfg.Cursor.Blink != nil {
+		cfg.Cursor.Animate = *cfg.Cursor.Blink
+		cfg.Cursor.Blink = nil
+		warnings = append(warnings, fmt.Sprintf("%s: cursor.blink is now cursor.animate", path))
+	}
 	if err := cfg.validate(); err != nil {
 		return Default(), warnings, fmt.Errorf("%s: %w", path, err)
 	}
@@ -181,9 +190,9 @@ func (c Config) validate() error {
 	check(c.Window.Padding >= 0 && c.Window.Padding <= 200, "window.padding must be between 0 and 200")
 	check(c.Prompt.Symbol != "" && !strings.ContainsAny(c.Prompt.Symbol, "\n\r\t"), "prompt.symbol must be a non-empty single line")
 	switch c.Cursor.Style {
-	case CursorBlock, CursorBar, CursorUnderline:
+	case CursorDot, CursorBlock, CursorBar, CursorUnderline:
 	default:
-		check(false, "cursor.style must be block, bar or underline, got %q", c.Cursor.Style)
+		check(false, "cursor.style must be dot, block, bar or underline, got %q", c.Cursor.Style)
 	}
 	check(c.Animation.FadeInMs >= 0 && c.Animation.FadeInMs <= 5000, "animation.fade_in_ms must be between 0 and 5000")
 	check(c.Scrollback.Lines >= 100, "scrollback.lines must be at least 100")

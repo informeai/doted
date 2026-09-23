@@ -25,9 +25,11 @@ padding = 14
 symbol = "> "
 
 [cursor]
-# "block", "bar" or "underline"
-style = "block"
-blink = true
+# "dot" (a ball in the accent color), "block", "bar" or "underline"
+style = "dot"
+# The dot hops while you type and rests otherwise; the other styles blink
+# while you're not typing.
+animate = true
 
 [animation]
 # Fade-in of new lines and the pulsing dots while a command runs.

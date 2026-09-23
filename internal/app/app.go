@@ -49,14 +49,15 @@ type Game struct {
 	viewing  *jobs.Job // shown full screen in the job view
 	panel    panel     // the jobs list or the help
 
-	scroll    int       // visual rows scrolled up from the bottom
-	lastInput time.Time // keeps the cursor solid while typing
-	chars     []rune
-	keyBuf    []byte
-	ptyCols   int // terminal size last given to the jobs
-	ptyRows   int
-	quitArmed bool // exit was asked once while jobs were still running
-	quit      bool
+	scroll      int       // visual rows scrolled up from the bottom
+	lastInput   time.Time // keeps the cursor solid while typing
+	bounceStart time.Time // when the dot cursor started hopping; see bounceElapsed
+	chars       []rune
+	keyBuf      []byte
+	ptyCols     int // terminal size last given to the jobs
+	ptyRows     int
+	quitArmed   bool // exit was asked once while jobs were still running
+	quit        bool
 
 	// Set by Layout / Draw, read by Update.
 	scale      float64
@@ -395,7 +396,15 @@ func (g *Game) requestQuit() {
 	g.quit = true
 }
 
-func (g *Game) touch() { g.lastInput = time.Now() }
+// touch records a keystroke: the blinking cursors hold still, and the dot
+// starts hopping unless it is already mid-bounce.
+func (g *Game) touch() {
+	now := time.Now()
+	if _, bouncing := bounceElapsed(now, g.bounceStart, g.lastInput); !bouncing {
+		g.bounceStart = now
+	}
+	g.lastInput = now
+}
 
 // repeating reports whether key fires this tick: on press, then at the
 // repeat rate once it has been held past the delay.

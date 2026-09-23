@@ -102,3 +102,20 @@ func TestWriteDefault(t *testing.T) {
 		t.Fatalf("written default doesn't load cleanly: %v %v", warns, err)
 	}
 }
+
+func TestCursorDefaultsAndOldBlinkKey(t *testing.T) {
+	if c := Default(); c.Cursor.Style != CursorDot || !c.Cursor.Animate {
+		t.Fatalf("default cursor = %+v, want an animated dot", c.Cursor)
+	}
+
+	c, warns, err := Load(writeConfig(t, "[cursor]\nstyle = \"block\"\nblink = false\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Cursor.Style != CursorBlock || c.Cursor.Animate || c.Cursor.Blink != nil {
+		t.Fatalf("cursor = %+v, want a still block", c.Cursor)
+	}
+	if len(warns) != 1 || !strings.Contains(warns[0], "cursor.animate") {
+		t.Fatalf("warnings = %q", warns)
+	}
+}
