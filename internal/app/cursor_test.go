@@ -88,3 +88,60 @@ func TestTouchStartsAndContinuesTheBounce(t *testing.T) {
 		t.Fatal("a key after landing should start a new bounce")
 	}
 }
+
+func TestTypingGlow(t *testing.T) {
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(d time.Duration) time.Time { return base.Add(d) }
+
+	if g := typingGlow(at(time.Minute), time.Time{}, time.Time{}); g != 0 {
+		t.Fatalf("before any key: %v", g)
+	}
+	start, last := at(0), at(bouncePeriod+bouncePeriod/4) // the last key falls in the 2nd hop
+	for _, tt := range []struct {
+		at   time.Duration
+		want float64
+	}{
+		{0, 1},                                 // first key: accent at once
+		{2*bouncePeriod - time.Millisecond, 1}, // still typing until the last hop lands
+		{2*bouncePeriod + typingFade/2, 0.5},   // fading back
+		{2*bouncePeriod + typingFade, 0},       // back to the text color
+		{2*bouncePeriod + 10*typingFade, 0},
+	} {
+		if got := typingGlow(at(tt.at), start, last); math.Abs(got-tt.want) > 1e-9 {
+			t.Errorf("at %v: glow %v, want %v", tt.at, got, tt.want)
+		}
+	}
+}
+
+func TestPromptColorFollowsTyping(t *testing.T) {
+	g := newTestGame(t)
+	now := time.Now()
+	if got := g.promptColor(now); got != g.theme.Foreground {
+		t.Fatalf("at rest: %v, want the text color %v", got, g.theme.Foreground)
+	}
+	g.touch()
+	if got := g.promptColor(time.Now()); got != g.theme.Accent {
+		t.Fatalf("while typing: %v, want the accent color %v", got, g.theme.Accent)
+	}
+	// Halfway through the fade the color sits between the two.
+	end, _ := bounceEnd(g.bounceStart, g.lastInput)
+	mid := g.promptColor(end.Add(typingFade / 2))
+	if mid == g.theme.Foreground || mid == g.theme.Accent {
+		t.Fatalf("mid-fade color %v should be between the text and accent colors", mid)
+	}
+}
+
+func TestSelectionCells(t *testing.T) {
+	g := newTestGame(t)
+	g.editor.Insert([]rune("git status")...)
+	if from, to := g.selectionCells(2); from != to {
+		t.Fatalf("no selection should give an empty range, got %d..%d", from, to)
+	}
+	for range len("status") {
+		g.editor.Left(true)
+	}
+	// "git " is 4 runes after a 2-cell prompt: "status" is cells 6..12.
+	if from, to := g.selectionCells(2); from != 6 || to != 12 {
+		t.Fatalf("selection cells %d..%d, want 6..12", from, to)
+	}
+}

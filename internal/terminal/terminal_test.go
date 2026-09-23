@@ -50,20 +50,20 @@ func TestEditorEditing(t *testing.T) {
 	var e Editor
 	e.Insert([]rune("echo world")...)
 	for range 5 {
-		e.Left()
+		e.Left(false)
 	}
 	e.Insert([]rune("hello ")...)
 	if got := e.Text(); got != "echo hello world" {
 		t.Fatalf("Text() = %q", got)
 	}
-	e.End()
+	e.End(false)
 	e.DeleteWordBackward()
 	if got := e.Text(); got != "echo hello " {
 		t.Fatalf("after Ctrl+W: %q", got)
 	}
-	e.Home()
+	e.Home(false)
 	e.Delete()
-	e.End()
+	e.End(false)
 	e.Backspace()
 	if got := e.Text(); got != "cho hello" {
 		t.Fatalf("after Delete/Backspace: %q", got)
@@ -91,5 +91,125 @@ func TestEditorHistory(t *testing.T) {
 	e.HistoryNext()
 	if e.Text() != "draft" || e.Cursor() != len("draft") {
 		t.Fatalf("draft not restored: %q cursor %d", e.Text(), e.Cursor())
+	}
+}
+
+func TestEditorSelection(t *testing.T) {
+	var e Editor
+	e.Insert([]rune("git status")...)
+	if _, _, ok := e.Selection(); ok {
+		t.Fatal("selection before any Shift")
+	}
+
+	// Shift+Left x6 selects "status".
+	for range 6 {
+		e.Left(true)
+	}
+	if s, end, ok := e.Selection(); !ok || s != 4 || end != 10 || e.SelectedText() != "status" {
+		t.Fatalf("selection = %d..%d %v %q", s, end, ok, e.SelectedText())
+	}
+
+	// Typing replaces it.
+	e.Insert([]rune("log")...)
+	if e.Text() != "git log" || e.Cursor() != 7 {
+		t.Fatalf("after typing over the selection: %q cursor %d", e.Text(), e.Cursor())
+	}
+	if _, _, ok := e.Selection(); ok {
+		t.Fatal("selection survived typing")
+	}
+
+	// Shift+Home, then Backspace deletes it all.
+	e.Home(true)
+	if e.SelectedText() != "git log" {
+		t.Fatalf("Shift+Home selected %q", e.SelectedText())
+	}
+	e.Backspace()
+	if !e.Empty() {
+		t.Fatalf("Backspace left %q", e.Text())
+	}
+}
+
+func TestEditorSelectionCollapsesAndShrinks(t *testing.T) {
+	var e Editor
+	e.Insert([]rune("abcdef")...)
+	e.Home(false)
+	e.Right(true)
+	e.Right(true)
+	e.Right(true) // "abc" selected, cursor at 3
+	e.Left(true)  // back to "ab"
+	if e.SelectedText() != "ab" {
+		t.Fatalf("selection = %q, want ab", e.SelectedText())
+	}
+	e.Left(true)
+	e.Left(true) // cursor back on the anchor: nothing selected
+	if _, _, ok := e.Selection(); ok {
+		t.Fatal("selection should be empty back at the anchor")
+	}
+
+	e.End(true)   // select "abcdef" from 0
+	e.Left(false) // collapses to the start
+	if _, _, ok := e.Selection(); ok || e.Cursor() != 0 {
+		t.Fatalf("Left without Shift should collapse to the start, cursor %d", e.Cursor())
+	}
+	e.End(true)
+	e.Home(false)
+	e.Right(true)
+	e.Right(true)
+	e.Right(false) // collapses to the end
+	if _, _, ok := e.Selection(); ok || e.Cursor() != 2 {
+		t.Fatalf("Right without Shift should collapse to the end, cursor %d", e.Cursor())
+	}
+
+	// Deleting keys act on the selection.
+	e.End(false)
+	e.Left(true)
+	e.Left(true)
+	e.DeleteWordBackward()
+	if e.Text() != "abcd" {
+		t.Fatalf("Ctrl+W with a selection: %q", e.Text())
+	}
+	e.End(false)
+	e.Home(true)
+	e.Delete()
+	if !e.Empty() {
+		t.Fatalf("Delete with a selection left %q", e.Text())
+	}
+}
+
+func TestEditorSelectionClearedByLineChanges(t *testing.T) {
+	var e Editor
+	e.Insert([]rune("one")...)
+	e.Submit()
+	e.Insert([]rune("two")...)
+	e.Home(true)
+	e.HistoryPrev()
+	if _, _, ok := e.Selection(); ok {
+		t.Fatal("history kept the selection")
+	}
+	e.End(false)
+	e.Home(true)
+	e.Reset()
+	if _, _, ok := e.Selection(); ok {
+		t.Fatal("Reset kept the selection")
+	}
+}
+
+func TestEditorCutAndKillReturnText(t *testing.T) {
+	var e Editor
+	e.Insert([]rune("git commit -m msg")...)
+	if got := e.Cut(); got != "" {
+		t.Fatalf("Cut without a selection = %q", got)
+	}
+	for range len("msg") {
+		e.Left(true)
+	}
+	if got := e.Cut(); got != "msg" || e.Text() != "git commit -m " {
+		t.Fatalf("Cut = %q, line %q", got, e.Text())
+	}
+	if got := e.DeleteWordBackward(); got != "-m " || e.Text() != "git commit " {
+		t.Fatalf("Ctrl+W removed %q, line %q", got, e.Text())
+	}
+	if got := e.KillToStart(); got != "git commit " || !e.Empty() {
+		t.Fatalf("Ctrl+U removed %q, line %q", got, e.Text())
 	}
 }

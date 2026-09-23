@@ -50,13 +50,18 @@ type Game struct {
 	panel    panel     // the jobs list or the help
 
 	scroll      int       // visual rows scrolled up from the bottom
+	sparks      *sparks   // fired from the prompt bar while typing
+	path        pathRoll  // the directory on the status line, rolling after a cd
 	lastInput   time.Time // keeps the cursor solid while typing
 	bounceStart time.Time // when the dot cursor started hopping; see bounceElapsed
 	chars       []rune
 	keyBuf      []byte
 	ptyCols     int // terminal size last given to the jobs
 	ptyRows     int
-	quitArmed   bool // exit was asked once while jobs were still running
+	clipboard   string    // doted's own clipboard; see clipboard.go
+	flashText   string    // short status-line message, e.g. "copied"
+	flashUntil  time.Time // when flashText goes away
+	quitArmed   bool      // exit was asked once while jobs were still running
 	quit        bool
 
 	// Set by Layout / Draw, read by Update.
@@ -95,8 +100,10 @@ func New(s Settings, configPath string) (*Game, error) {
 		scale:      1,
 		cols:       80,
 		outputRows: 24,
+		sparks:     newSparks(uint64(time.Now().UnixNano())),
 	}
 	g.apply(s)
+	g.trackDir(time.Now())
 	if desktop {
 		if err := g.session.ImportLoginEnvironment(loginEnvTimeout); err != nil {
 			g.notify(terminal.Error, err.Error())
@@ -180,6 +187,8 @@ func (g *Game) Update() error {
 	}
 	g.syncPTYSize()
 	g.handleScrolling()
+	g.sparks.step(tickSeconds)
+	g.trackDir(time.Now())
 
 	if g.quit {
 		g.jobs.KillAll()
@@ -234,6 +243,11 @@ func (g *Game) handleKeyboard() {
 	ctrl := ebiten.IsKeyPressed(ebiten.KeyControl)
 	meta := ebiten.IsKeyPressed(ebiten.KeyMeta) // Cmd on macOS
 	alt := ebiten.IsKeyPressed(ebiten.KeyAlt)
+	shift := ebiten.IsKeyPressed(ebiten.KeyShift) // extends the selection
+
+	if g.handleClipboardKeys() {
+		return
+	}
 
 	g.chars = ebiten.AppendInputChars(g.chars[:0])
 	if !ctrl && !meta {
@@ -246,6 +260,7 @@ func (g *Game) handleKeyboard() {
 		}
 		if typed {
 			g.touch()
+			g.typed()
 		}
 	}
 
@@ -263,13 +278,15 @@ func (g *Game) handleKeyboard() {
 				g.requestQuit()
 			}
 		case repeating(ebiten.KeyU):
-			g.editor.KillToStart()
+			g.kill(g.editor.KillToStart())
 		case repeating(ebiten.KeyW):
-			g.editor.DeleteWordBackward()
+			g.kill(g.editor.DeleteWordBackward())
+		case inpututil.IsKeyJustPressed(ebiten.KeyY):
+			g.paste() // readline's yank
 		case inpututil.IsKeyJustPressed(ebiten.KeyA):
-			g.editor.Home()
+			g.editor.Home(shift)
 		case inpututil.IsKeyJustPressed(ebiten.KeyE):
-			g.editor.End()
+			g.editor.End(shift)
 		default:
 			return
 		}
@@ -283,34 +300,36 @@ func (g *Game) handleKeyboard() {
 	case repeating(ebiten.KeyBackspace):
 		switch {
 		case meta:
-			g.editor.KillToStart()
+			g.kill(g.editor.KillToStart())
 		case alt:
-			g.editor.DeleteWordBackward()
+			g.kill(g.editor.DeleteWordBackward())
 		default:
 			g.editor.Backspace()
+			g.typed()
 		}
 	case repeating(ebiten.KeyDelete):
 		g.editor.Delete()
+		g.typed()
 	case repeating(ebiten.KeyArrowLeft):
 		if meta {
-			g.editor.Home()
+			g.editor.Home(shift)
 		} else {
-			g.editor.Left()
+			g.editor.Left(shift)
 		}
 	case repeating(ebiten.KeyArrowRight):
 		if meta {
-			g.editor.End()
+			g.editor.End(shift)
 		} else {
-			g.editor.Right()
+			g.editor.Right(shift)
 		}
 	case repeating(ebiten.KeyArrowUp):
 		g.editor.HistoryPrev()
 	case repeating(ebiten.KeyArrowDown):
 		g.editor.HistoryNext()
 	case inpututil.IsKeyJustPressed(ebiten.KeyHome):
-		g.editor.Home()
+		g.editor.Home(shift)
 	case inpututil.IsKeyJustPressed(ebiten.KeyEnd):
-		g.editor.End()
+		g.editor.End(shift)
 	default:
 		return
 	}
@@ -330,6 +349,10 @@ func (g *Game) handleAttachedKeys() {
 // forwardKeyboard sends keystrokes to a job's terminal, which takes care of
 // echo, line editing and signals (Ctrl+C, Ctrl+Z...).
 func (g *Game) forwardKeyboard(j *jobs.Job) {
+	if clipboardChord(ebiten.KeyV) {
+		g.pasteTo(j)
+		return
+	}
 	g.chars = ebiten.AppendInputChars(g.chars[:0])
 	g.keyBuf = appendKeyBytes(g.keyBuf[:0], g.chars)
 	if len(g.keyBuf) == 0 {
@@ -338,6 +361,7 @@ func (g *Game) forwardKeyboard(j *jobs.Job) {
 	if err := j.Write(g.keyBuf); err == nil {
 		g.scroll = 0
 		g.touch()
+		g.typed()
 	}
 }
 
@@ -380,7 +404,7 @@ func (g *Game) visibleScrollback() *terminal.Scrollback {
 // and start a fresh line.
 func (g *Game) abandonLine() {
 	if !g.editor.Empty() {
-		g.scrollback.Append(terminal.Command, g.cfg.Prompt.Symbol+g.editor.Text()+"^C", time.Now())
+		g.scrollback.Append(terminal.Command, g.promptText()+g.editor.Text()+"^C", time.Now())
 	}
 	g.editor.Reset()
 }
@@ -394,6 +418,19 @@ func (g *Game) requestQuit() {
 		return
 	}
 	g.quit = true
+}
+
+// typed fires a burst of sparks from the prompt bar for a keystroke that
+// edited text.
+func (g *Game) typed() {
+	if g.cfg.Prompt.Style != config.PromptBar || !g.cfg.Animation.Particles || !g.cfg.Animation.Enabled {
+		return
+	}
+	barHeight := g.cfg.Font.Size * 1.2 // logical px, until faces are measured
+	if g.faces != nil {
+		barHeight = g.faces.glyphH / g.scale
+	}
+	g.sparks.burst(sparksPerKey, barHeight)
 }
 
 // touch records a keystroke: the blinking cursors hold still, and the dot

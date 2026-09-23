@@ -22,19 +22,27 @@ height = 600
 padding = 14
 
 [prompt]
+# "bar": a vertical bar in the text color that turns to the accent color and
+# throws sparks as you type.
+# "symbol": the text below.
+style = "bar"
 symbol = "> "
 
 [cursor]
-# "dot" (a ball in the accent color), "block", "bar" or "underline"
+# "dot" (a ball in the text color that turns to the accent color while you
+# type), "block", "bar" or "underline"
 style = "dot"
 # The dot hops while you type and rests otherwise; the other styles blink
 # while you're not typing.
 animate = true
 
 [animation]
-# Fade-in of new lines and the pulsing dots while a command runs.
+# Turns off every animation when false: fade-in of new lines, the dots while
+# a command runs, the hopping cursor and the typing sparks.
 enabled = true
 fade_in_ms = 180
+# Sparks fired from the prompt bar as you type.
+particles = true
 
 [scrollback]
 lines = 10000

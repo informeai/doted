@@ -119,3 +119,23 @@ func TestCursorDefaultsAndOldBlinkKey(t *testing.T) {
 		t.Fatalf("warnings = %q", warns)
 	}
 }
+
+func TestPromptStyle(t *testing.T) {
+	if c := Default(); c.Prompt.Style != PromptBar || !c.Animation.Particles {
+		t.Fatalf("default prompt %+v, particles %v", c.Prompt, c.Animation.Particles)
+	}
+
+	// A file that only customized the symbol keeps showing it.
+	c, _, err := Load(writeConfig(t, "[prompt]\nsymbol = \"$ \"\n"))
+	if err != nil || c.Prompt.Style != PromptSymbol || c.Prompt.Symbol != "$ " {
+		t.Fatalf("prompt %+v, err %v", c.Prompt, err)
+	}
+	// Unless it also asks for the bar.
+	c, _, err = Load(writeConfig(t, "[prompt]\nstyle = \"bar\"\nsymbol = \"$ \"\n"))
+	if err != nil || c.Prompt.Style != PromptBar {
+		t.Fatalf("prompt %+v, err %v", c.Prompt, err)
+	}
+	if _, _, err := Load(writeConfig(t, "[prompt]\nstyle = \"arrow\"\n")); err == nil {
+		t.Fatal("expected an error for an unknown prompt style")
+	}
+}

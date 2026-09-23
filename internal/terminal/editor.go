@@ -5,11 +5,15 @@ import (
 	"unicode"
 )
 
-// Editor is the single-line input at the bottom of the screen, with a cursor
-// and shell-like command history.
+// Editor is the single-line input at the bottom of the screen, with a cursor,
+// a selection and shell-like command history.
 type Editor struct {
 	buf    []rune
 	cursor int
+
+	// The selection runs between anchor and the cursor while selecting.
+	selecting bool
+	anchor    int
 
 	history []string
 	histPos int    // == len(history) while editing a fresh line
@@ -22,28 +26,72 @@ func (e *Editor) Cursor() int { return e.cursor }
 
 func (e *Editor) Empty() bool { return len(e.buf) == 0 }
 
+// Selection returns the selected range [start, end) of the line, if any.
+func (e *Editor) Selection() (start, end int, ok bool) {
+	if !e.selecting || e.anchor == e.cursor {
+		return 0, 0, false
+	}
+	return min(e.anchor, e.cursor), max(e.anchor, e.cursor), true
+}
+
+// SelectedText is the text in the selection, or "" without one.
+func (e *Editor) SelectedText() string {
+	start, end, ok := e.Selection()
+	if !ok {
+		return ""
+	}
+	return string(e.buf[start:end])
+}
+
+// deleteSelection removes the selected text, reporting whether there was any.
+func (e *Editor) deleteSelection() bool {
+	start, end, ok := e.Selection()
+	e.selecting = false
+	if !ok {
+		return false
+	}
+	e.buf = slices.Delete(e.buf, start, end)
+	e.cursor = start
+	return true
+}
+
+// Cut removes the selection and returns its text ("" without one).
+func (e *Editor) Cut() string {
+	text := e.SelectedText()
+	e.deleteSelection()
+	return text
+}
+
+// Insert types rs at the cursor, replacing the selection.
 func (e *Editor) Insert(rs ...rune) {
+	e.deleteSelection()
 	e.buf = slices.Insert(e.buf, e.cursor, rs...)
 	e.cursor += len(rs)
 }
 
+// Backspace deletes the selection, or the rune before the cursor.
 func (e *Editor) Backspace() {
-	if e.cursor == 0 {
+	if e.deleteSelection() || e.cursor == 0 {
 		return
 	}
 	e.buf = slices.Delete(e.buf, e.cursor-1, e.cursor)
 	e.cursor--
 }
 
+// Delete deletes the selection, or the rune under the cursor.
 func (e *Editor) Delete() {
-	if e.cursor == len(e.buf) {
+	if e.deleteSelection() || e.cursor == len(e.buf) {
 		return
 	}
 	e.buf = slices.Delete(e.buf, e.cursor, e.cursor+1)
 }
 
-// DeleteWordBackward removes the word before the cursor (Ctrl+W).
-func (e *Editor) DeleteWordBackward() {
+// DeleteWordBackward removes the selection, or the word before the cursor
+// (Ctrl+W), and returns the removed text.
+func (e *Editor) DeleteWordBackward() string {
+	if cut := e.Cut(); cut != "" {
+		return cut
+	}
 	i := e.cursor
 	for i > 0 && unicode.IsSpace(e.buf[i-1]) {
 		i--
@@ -51,36 +99,65 @@ func (e *Editor) DeleteWordBackward() {
 	for i > 0 && !unicode.IsSpace(e.buf[i-1]) {
 		i--
 	}
+	removed := string(e.buf[i:e.cursor])
 	e.buf = slices.Delete(e.buf, i, e.cursor)
 	e.cursor = i
+	return removed
 }
 
-// KillToStart removes everything before the cursor (Ctrl+U).
-func (e *Editor) KillToStart() {
+// KillToStart removes the selection, or everything before the cursor
+// (Ctrl+U), and returns the removed text.
+func (e *Editor) KillToStart() string {
+	if cut := e.Cut(); cut != "" {
+		return cut
+	}
+	removed := string(e.buf[:e.cursor])
 	e.buf = slices.Delete(e.buf, 0, e.cursor)
 	e.cursor = 0
+	return removed
 }
 
-func (e *Editor) Left() {
-	if e.cursor > 0 {
-		e.cursor--
+// moveTo puts the cursor at i. With extend (Shift held) the selection grows
+// or shrinks with it; otherwise any selection is dropped.
+func (e *Editor) moveTo(i int, extend bool) {
+	if extend && !e.selecting {
+		e.selecting, e.anchor = true, e.cursor
 	}
-}
-
-func (e *Editor) Right() {
-	if e.cursor < len(e.buf) {
-		e.cursor++
+	if !extend {
+		e.selecting = false
 	}
+	e.cursor = max(0, min(i, len(e.buf)))
 }
 
-func (e *Editor) Home() { e.cursor = 0 }
+// Left moves one rune left. Without extend, a selection collapses to its
+// start instead.
+func (e *Editor) Left(extend bool) {
+	if start, _, ok := e.Selection(); ok && !extend {
+		e.moveTo(start, false)
+		return
+	}
+	e.moveTo(e.cursor-1, extend)
+}
 
-func (e *Editor) End() { e.cursor = len(e.buf) }
+// Right moves one rune right. Without extend, a selection collapses to its
+// end instead.
+func (e *Editor) Right(extend bool) {
+	if _, end, ok := e.Selection(); ok && !extend {
+		e.moveTo(end, false)
+		return
+	}
+	e.moveTo(e.cursor+1, extend)
+}
+
+func (e *Editor) Home(extend bool) { e.moveTo(0, extend) }
+
+func (e *Editor) End(extend bool) { e.moveTo(len(e.buf), extend) }
 
 // Reset clears the line without recording it in history.
 func (e *Editor) Reset() {
 	e.buf = e.buf[:0]
 	e.cursor = 0
+	e.selecting = false
 	e.histPos = len(e.history)
 	e.draft = nil
 }
@@ -123,4 +200,5 @@ func (e *Editor) HistoryNext() {
 func (e *Editor) load(rs []rune) {
 	e.buf = append(e.buf[:0], rs...)
 	e.cursor = len(e.buf)
+	e.selecting = false
 }

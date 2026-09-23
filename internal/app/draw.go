@@ -20,6 +20,9 @@ import (
 )
 
 const (
+	promptBarWidth   = 2    // logical px
+	selectionDotSize = 0.14 // radius of the selection dots, in cell widths
+
 	blinkPeriod = time.Second
 	blinkHold   = 600 * time.Millisecond // the cursor holds still after a keystroke
 
@@ -30,7 +33,11 @@ const (
 	bounceHeight  = 0.3
 	bounceSquash  = 0.22
 	bounceContact = 0.1 // fraction of the period spent touching the ground
-	dimAlpha      = 0.6
+
+	// After typing stops, the bar and the dot fade from the accent color back
+	// to the text color over typingFade.
+	typingFade = 300 * time.Millisecond
+	dimAlpha   = 0.6
 )
 
 func fontVariant(a terminal.Attr) fonts.Variant {
@@ -52,6 +59,7 @@ type faceSet struct {
 	cellW      float64
 	lineH      float64
 	textDY     float64 // centers glyphs vertically inside a row
+	glyphH     float64 // ascent plus descent
 	baselineY  float64 // offset of the text baseline from the row top
 	underlineY float64 // offset from the row top
 }
@@ -65,6 +73,7 @@ func newFaceSet(fam fonts.Family, cfg config.Font, scale float64) *faceSet {
 	glyphH := m.HAscent + m.HDescent
 	f.lineH = math.Ceil(glyphH * cfg.LineHeight)
 	f.textDY = (f.lineH - glyphH) / 2
+	f.glyphH = glyphH
 	f.baselineY = f.textDY + m.HAscent
 	f.underlineY = f.baselineY + scale
 	f.cellW = text.AdvanceAt("M", 1, f.faces[0])
@@ -76,8 +85,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.faces = newFaceSet(g.family, g.cfg.Font, g.scale)
 	}
 	f := g.faces
-	prompt := g.cfg.Prompt.Symbol
-	promptLen := utf8.RuneCountInString(prompt)
+	promptLen := utf8.RuneCountInString(g.promptText())
 	now := time.Now()
 	screen.Fill(g.theme.Background)
 
@@ -131,28 +139,107 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		inputHint = "input is sent to the running command · ctrl+b to background"
 	}
 	if inputHint != "" {
-		g.drawText(screen, prompt, pad, inputTop, g.theme.Muted, 1)
+		g.drawPrompt(screen, pad, inputTop, g.theme.Muted, 1)
 		g.drawText(screen, truncate(inputHint, g.cols-promptLen), pad+promptW, inputTop, g.theme.Muted, dimAlpha)
 	} else {
+		selFrom, selTo := g.selectionCells(promptLen)
 		for i, row := range inputRows {
 			y := inputTop + float64(i)*f.lineH
-			x := pad
+			from := 0
 			if i == 0 {
-				g.drawText(screen, prompt, x, y, g.theme.Accent, 1)
-				row, x = row[promptLen:], x+promptW
+				g.drawPrompt(screen, pad, y, g.promptColor(now), 1)
+				from = promptLen
 			}
-			g.drawText(screen, string(row), x, y, g.theme.Foreground, 1)
+			g.drawInputRow(screen, row, from, i*g.cols, pad, y, selFrom, selTo)
 		}
+		g.drawSelection(screen, pad, inputTop, promptLen)
 		g.drawCursor(screen, pad+float64(cursorCol)*f.cellW, inputTop+float64(cursorRow)*f.lineH, runeAt(inputRows[cursorRow], cursorCol), now)
+	}
+
+	// Sparks fly from the bar over everything else in the input box.
+	if g.cfg.Prompt.Style == config.PromptBar {
+		barX, barY := g.barCenter(pad, inputTop)
+		g.sparks.draw(screen, barX, barY, g.scale, g.theme.Accent, g.theme.Foreground)
 	}
 
 	g.drawStatus(screen, pad, statusY, w-pad, now)
 }
 
+// promptText is what the prompt takes up on the line: the symbol, or blank
+// cells where the bar is drawn.
+func (g *Game) promptText() string {
+	if g.cfg.Prompt.Style == config.PromptBar {
+		return "  "
+	}
+	return g.cfg.Prompt.Symbol
+}
+
+// drawPrompt draws the prompt at the start of the row at (x, y).
+func (g *Game) drawPrompt(dst *ebiten.Image, x, y float64, clr color.RGBA, alpha float64) {
+	if g.cfg.Prompt.Style != config.PromptBar {
+		g.drawText(dst, g.cfg.Prompt.Symbol, x, y, clr, alpha)
+		return
+	}
+	f := g.faces
+	width := math.Max(1, math.Round(promptBarWidth*g.scale))
+	vector.FillRect(dst, float32(x), float32(y+f.textDY), float32(width), float32(f.glyphH), scaleAlpha(clr, alpha), true)
+}
+
+// barCenter is the middle of the prompt bar in the row at (x, y), where the
+// sparks start.
+func (g *Game) barCenter(x, y float64) (float64, float64) {
+	f := g.faces
+	return x + math.Max(1, math.Round(promptBarWidth*g.scale))/2, y + f.textDY + f.glyphH/2
+}
+
+// selectionCells is the selected part of the input as a range of cells,
+// counted from the start of the prompt; empty without a selection.
+func (g *Game) selectionCells(promptLen int) (from, to int) {
+	start, end, ok := g.editor.Selection()
+	if !ok {
+		return 0, 0
+	}
+	return promptLen + start, promptLen + end
+}
+
+// drawInputRow draws row's runes from column from on. rowCell is the cell
+// the row starts at; the cells in [selFrom, selTo) are selected and drawn
+// in the accent color, the rest in the text color.
+func (g *Game) drawInputRow(dst *ebiten.Image, row []rune, from, rowCell int, x, y float64, selFrom, selTo int) {
+	selected := func(c int) bool { return rowCell+c >= selFrom && rowCell+c < selTo }
+	for c := from; c < len(row); {
+		end := c + 1
+		for end < len(row) && selected(end) == selected(c) {
+			end++
+		}
+		clr := g.theme.Foreground
+		if selected(c) {
+			clr = g.theme.Accent
+		}
+		g.drawText(dst, string(row[c:end]), x+float64(c)*g.faces.cellW, y, clr, 1)
+		c = end
+	}
+}
+
+// drawSelection marks each selected character of the input with a small dot
+// above it. The input starts at (x, y) after promptLen cells of prompt and
+// wraps every g.cols cells.
+func (g *Game) drawSelection(dst *ebiten.Image, x, y float64, promptLen int) {
+	from, to := g.selectionCells(promptLen)
+	f := g.faces
+	r := float32(math.Max(1, f.cellW*selectionDotSize))
+	for cell := from; cell < to; cell++ {
+		cx := x + (float64(cell%g.cols)+0.5)*f.cellW
+		cy := y + float64(cell/g.cols)*f.lineH + f.textDY/2
+		vector.FillCircle(dst, float32(cx), float32(cy), r, g.theme.Accent, true)
+	}
+}
+
 // inputLayout wraps the prompt plus the typed text and locates the cursor.
 func (g *Game) inputLayout() (rows [][]rune, cursorRow, cursorCol int) {
-	rows = terminal.Wrap([]rune(g.cfg.Prompt.Symbol+g.editor.Text()), g.cols)
-	idx := utf8.RuneCountInString(g.cfg.Prompt.Symbol) + g.editor.Cursor()
+	prompt := g.promptText()
+	rows = terminal.Wrap([]rune(prompt+g.editor.Text()), g.cols)
+	idx := utf8.RuneCountInString(prompt) + g.editor.Cursor()
 	cursorRow, cursorCol = idx/g.cols, idx%g.cols
 	if cursorRow == len(rows) {
 		rows = append(rows, nil) // cursor sits just past a full row
@@ -187,6 +274,10 @@ func (g *Game) drawScrollback(dst *ebiten.Image, sb *terminal.Scrollback, cursor
 			}
 			y -= f.lineH
 			g.drawCells(dst, rows[j], pad, y+dy, line.Kind, alpha)
+			// Commands that were run keep the prompt bar they were typed at.
+			if j == 0 && line.Kind == terminal.Command && g.cfg.Prompt.Style == config.PromptBar {
+				g.drawPrompt(dst, pad, y+dy, g.theme.Accent, alpha)
+			}
 			if j == curRow {
 				var under rune
 				if curCol < len(rows[j]) {
@@ -264,7 +355,7 @@ func (g *Game) drawCursor(dst *ebiten.Image, x, y float64, under rune, now time.
 		if g.cfg.Cursor.Animate && g.cfg.Animation.Enabled {
 			t, _ = bounceElapsed(now, g.bounceStart, g.lastInput)
 		}
-		g.drawDotCursor(dst, x, y, t)
+		g.drawDotCursor(dst, x, y, t, g.promptColor(now))
 		return
 	}
 	resting := now.Sub(g.lastInput) < blinkHold || !g.cfg.Cursor.Animate
@@ -285,9 +376,9 @@ func (g *Game) drawCursor(dst *ebiten.Image, x, y float64, under rune, now time.
 	}
 }
 
-// drawDotCursor draws a ball in the accent color resting on the text
-// baseline of the cell at (x, y), t into its bounce (0 is at rest).
-func (g *Game) drawDotCursor(dst *ebiten.Image, x, y float64, t time.Duration) {
+// drawDotCursor draws a ball resting on the text baseline of the cell at
+// (x, y), t into its bounce (0 is at rest).
+func (g *Game) drawDotCursor(dst *ebiten.Image, x, y float64, t time.Duration, clr color.RGBA) {
 	f := g.faces
 	lift, squash := dotBounce(t)
 	r := f.cellW * 0.32
@@ -295,7 +386,7 @@ func (g *Game) drawDotCursor(dst *ebiten.Image, x, y float64, t time.Duration) {
 	ry := r * (1 - bounceSquash*squash)
 	cx := x + f.cellW/2
 	cy := y + f.baselineY - ry - lift*bounceHeight*f.lineH
-	fillEllipse(dst, cx, cy, rx, ry, g.theme.Accent)
+	fillEllipse(dst, cx, cy, rx, ry, clr)
 }
 
 // bounceElapsed says how far the dot is into its bouncing, which started at
@@ -303,14 +394,39 @@ func (g *Game) drawDotCursor(dst *ebiten.Image, x, y float64, t time.Duration) {
 // and, once they stop, finishes the hop the last key fell in, so it always
 // lands instead of freezing mid-air. bouncing is false at rest.
 func bounceElapsed(now, start, lastKey time.Time) (t time.Duration, bouncing bool) {
-	if start.IsZero() || lastKey.Before(start) {
-		return 0, false
-	}
-	hops := lastKey.Sub(start)/bouncePeriod + 1
-	if !now.Before(start.Add(hops * bouncePeriod)) {
+	end, ok := bounceEnd(start, lastKey)
+	if !ok || !now.Before(end) {
 		return 0, false
 	}
 	return now.Sub(start), true
+}
+
+// bounceEnd is when the dot lands the hop the last key fell in.
+func bounceEnd(start, lastKey time.Time) (time.Time, bool) {
+	if start.IsZero() || lastKey.Before(start) {
+		return time.Time{}, false
+	}
+	hops := lastKey.Sub(start)/bouncePeriod + 1
+	return start.Add(hops * bouncePeriod), true
+}
+
+// typingGlow is 1 while the user is typing (the same span the dot hops for)
+// and fades to 0 over typingFade once it lands.
+func typingGlow(now, start, lastKey time.Time) float64 {
+	end, ok := bounceEnd(start, lastKey)
+	if !ok {
+		return 0
+	}
+	if now.Before(end) {
+		return 1
+	}
+	return math.Max(0, 1-float64(now.Sub(end))/float64(typingFade))
+}
+
+// promptColor is the prompt bar's and the dot cursor's color: the text color
+// at rest, the accent color while typing.
+func (g *Game) promptColor(now time.Time) color.RGBA {
+	return mixRGBA(g.theme.Foreground, g.theme.Accent, typingGlow(now, g.bounceStart, g.lastInput))
 }
 
 // dotBounce returns how high the dot is at t (0 on the ground, 1 at the top
@@ -352,11 +468,6 @@ func fillEllipse(dst *ebiten.Image, cx, cy, rx, ry float64, clr color.RGBA) {
 
 func (g *Game) drawStatus(dst *ebiten.Image, left, y, right float64, now time.Time) {
 	f := g.faces
-	title := shortPath(g.session.Dir())
-	if g.viewing != nil {
-		title = fmt.Sprintf("job %d · %s", g.viewing.ID, g.viewing.Command)
-	}
-
 	hint, spinner := g.statusHint(now)
 
 	// Keep the title readable on narrow windows: the hint gives way first.
@@ -371,7 +482,14 @@ func (g *Game) drawStatus(dst *ebiten.Image, left, y, right float64, now time.Ti
 	if spinner {
 		reserved += spinnerCols
 	}
-	g.drawText(dst, truncate(title, g.cols-reserved-2), left, y, g.theme.Muted, 1)
+	// The job view names the job; otherwise the working directory shows.
+	titleCols := g.cols - reserved - 2
+	if g.viewing != nil {
+		title := fmt.Sprintf("job %d · %s", g.viewing.ID, g.viewing.Command)
+		g.drawText(dst, truncate(title, titleCols), left, y, g.theme.Muted, 1)
+	} else {
+		g.drawPath(dst, left, y, titleCols, now)
+	}
 	if hint == "" {
 		return
 	}
@@ -386,6 +504,8 @@ func (g *Game) drawStatus(dst *ebiten.Image, left, y, right float64, now time.Ti
 // the keys that matter right now.
 func (g *Game) statusHint(now time.Time) (hint string, spinner bool) {
 	switch {
+	case g.flashText != "" && now.Before(g.flashUntil):
+		hint = g.flashText
 	case g.scroll > 0:
 		hint = "scrolled up · pgdn to return"
 	case g.attached != nil && g.parser.AltScreen, g.viewing != nil && g.viewing.AltScreen():
@@ -524,6 +644,13 @@ func runeAt(row []rune, col int) rune {
 		return row[col]
 	}
 	return 0
+}
+
+// mixRGBA blends from a to b by t (0 is a, 1 is b).
+func mixRGBA(a, b color.RGBA, t float64) color.RGBA {
+	t = math.Max(0, math.Min(1, t))
+	mix := func(x, y uint8) uint8 { return uint8(math.Round(float64(x) + (float64(y)-float64(x))*t)) }
+	return color.RGBA{mix(a.R, b.R), mix(a.G, b.G), mix(a.B, b.B), mix(a.A, b.A)}
 }
 
 func scaleAlpha(c color.RGBA, a float64) color.RGBA {

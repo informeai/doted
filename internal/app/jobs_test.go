@@ -195,3 +195,16 @@ func TestHelpHintOnStatusLine(t *testing.T) {
 		t.Fatalf("the help hint should be back once idle, got %q", hint)
 	}
 }
+
+func TestPasteIntoRunningCommand(t *testing.T) {
+	g := newTestGame(t)
+	g.clipboard = "doted"
+	run(g, `read name; echo "got:$name"`)
+	j := g.attached
+	g.pasteTo(j)
+	j.Write([]byte("\r"))
+	tickUntil(t, g, func() bool { return g.attached == nil })
+	if !strings.Contains(mainText(g), "got:doted") {
+		t.Fatalf("the program didn't receive the paste: %q", mainText(g))
+	}
+}

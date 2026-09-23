@@ -12,7 +12,7 @@ import (
 func (g *Game) submit() {
 	line := g.editor.Submit()
 	g.scroll = 0
-	g.scrollback.Append(terminal.Command, g.cfg.Prompt.Symbol+line, time.Now())
+	g.scrollback.Append(terminal.Command, g.promptText()+line, time.Now())
 
 	cmd, background := cutBackground(strings.TrimSpace(line))
 	if cmd == "" || !background && g.runBuiltin(cmd) {

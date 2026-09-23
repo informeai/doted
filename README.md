@@ -43,14 +43,19 @@ Cada comando roda em `$SHELL -c` dentro de um pseudo-terminal, no diretório atu
 | --- | --- | --- |
 | Enter | executa a linha | envia Enter ao programa |
 | ↑ / ↓ | navega no histórico | envia as setas ao programa |
+| Shift+←/→, Shift+Home/End | seleciona texto, marcado com pontinhos acima dos caracteres; digitar ou apagar substitui a seleção | — |
+| Cmd+C / Cmd+X / Cmd+V (Ctrl+Shift+C/X/V no Linux e Windows) | copia, recorta e cola a seleção | cola no programa |
 | Ctrl+C | descarta a linha | interrompe o programa (SIGINT) |
 | Ctrl+B | — | manda o comando para o background |
 | Ctrl+T | abre a lista de jobs | — |
 | Ctrl+L | limpa a tela | envia ao programa |
 | Ctrl+D | sai (com a linha vazia) | envia EOF |
 | Ctrl+A / Ctrl+E | início / fim da linha | envia ao programa |
-| Ctrl+U / Ctrl+W | apaga até o início / a palavra anterior | envia ao programa |
+| Ctrl+U / Ctrl+W | apaga até o início / a palavra anterior, guardando o texto apagado | envia ao programa |
+| Ctrl+Y | cola de volta o que o Ctrl+U/Ctrl+W apagou | envia ao programa |
 | PgUp / PgDn, roda do mouse | rola o histórico | rola o histórico |
+
+A área de transferência é do próprio doted: guarda o que você copia, recorta ou apaga com Ctrl+U/Ctrl+W, mas ainda não troca texto com outros apps, porque o Ebitengine não tem acesso à área de transferência do sistema. Ao copiar ou colar, a barra de status confirma a ação por um instante.
 
 No macOS, Cmd+←/→ vai para o início/fim da linha, Cmd+Backspace apaga até o início e Option+Backspace apaga a palavra anterior.
 
@@ -131,9 +136,9 @@ EDITOR = "nvim"
 | --- | --- |
 | `[font]` | `family`, `size`, `line_height` |
 | `[window]` | `width`, `height` (só na inicialização), `padding` |
-| `[prompt]` | `symbol` |
-| `[cursor]` | `style` (padrão `dot`: uma bolinha na cor de destaque que pula enquanto você digita), `animate` |
-| `[animation]` | `enabled`, `fade_in_ms` |
+| `[prompt]` | `style` (padrão `bar`: uma barra vertical na cor do texto que fica na cor de destaque e solta faíscas enquanto você digita; ou `symbol`), `symbol` |
+| `[cursor]` | `style` (padrão `dot`: uma bolinha na cor do texto que fica na cor de destaque e pula enquanto você digita), `animate` |
+| `[animation]` | `enabled` (liga ou desliga todas as animações), `fade_in_ms`, `particles` (as faíscas da barra) |
 | `[scrollback]` | `lines` |
 | `[shell]` | `program`, `[shell.env]` |
 | `[colors]` | `background`, `foreground`, `muted`, `accent`, `error`, `border`, `cursor` |
@@ -225,5 +230,5 @@ go test -tags smoke ./internal/app/
 - Programas de tela cheia (`vim`, `top`, `less`, `htop`) ainda não são emulados. Quando um deles entra na tela alternativa, a barra de status avisa. Por isso `PAGER` e `GIT_PAGER` são definidos como `cat`.
 - O cursor só se move dentro da linha atual; sequências que movem o cursor para outras linhas são ignoradas.
 - Jobs em background não são pausados (não há Ctrl+Z/SIGTSTP): eles continuam rodando.
-- Sem colar da área de transferência (o Ebitengine não expõe clipboard).
+- A área de transferência é só do doted: copiar e colar funcionam dentro dele, mas ainda não trocam texto com outros apps (o Ebitengine não expõe a área de transferência do sistema).
 - Caracteres largos (CJK, emoji) desalinham a grade, e a fonte Go Mono tem cobertura limitada de símbolos.

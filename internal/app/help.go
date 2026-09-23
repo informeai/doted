@@ -28,6 +28,9 @@ var helpCommands = []helpCommand{
 
 var helpKeys = []struct{ keys, desc string }{
 	{"enter · ↑↓", "run the line · browse history"},
+	{"shift+←→", "select text (also shift+home/end); typing replaces it"},
+	{"cmd+c · x · v", "copy · cut · paste (ctrl+shift+c/x/v on linux/windows)"},
+	{"ctrl+y", "paste back what ctrl+w or ctrl+u deleted"},
 	{"ctrl+c", "interrupt the running command, or discard the line"},
 	{"ctrl+b", "send the running command to the background"},
 	{"ctrl+t", "list background jobs"},

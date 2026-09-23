@@ -44,8 +44,16 @@ type Window struct {
 	Padding float64 `toml:"padding"`
 }
 
+type PromptStyle string
+
+const (
+	PromptBar    PromptStyle = "bar"    // a vertical bar in the accent color
+	PromptSymbol PromptStyle = "symbol" // Prompt.Symbol, as text
+)
+
 type Prompt struct {
-	Symbol string `toml:"symbol"`
+	Style  PromptStyle `toml:"style"`
+	Symbol string      `toml:"symbol"`
 }
 
 type CursorStyle string
@@ -66,8 +74,9 @@ type Cursor struct {
 }
 
 type Animation struct {
-	Enabled  bool `toml:"enabled"`
-	FadeInMs int  `toml:"fade_in_ms"`
+	Enabled   bool `toml:"enabled"`
+	FadeInMs  int  `toml:"fade_in_ms"`
+	Particles bool `toml:"particles"`
 }
 
 type Scrollback struct {
@@ -166,6 +175,11 @@ func Load(path string) (cfg Config, warnings []string, err error) {
 	for _, key := range md.Undecoded() {
 		warnings = append(warnings, fmt.Sprintf("%s: unknown setting %q", path, key.String()))
 	}
+	// Files written before prompt styles existed that customized the symbol
+	// meant for it to show.
+	if md.IsDefined("prompt", "symbol") && !md.IsDefined("prompt", "style") {
+		cfg.Prompt.Style = PromptSymbol
+	}
 	if cfg.Cursor.Blink != nil {
 		cfg.Cursor.Animate = *cfg.Cursor.Blink
 		cfg.Cursor.Blink = nil
@@ -188,6 +202,7 @@ func (c Config) validate() error {
 	check(c.Font.LineHeight >= 1 && c.Font.LineHeight <= 3, "font.line_height must be between 1 and 3")
 	check(c.Window.Width >= 200 && c.Window.Height >= 120, "window width/height must be at least 200×120")
 	check(c.Window.Padding >= 0 && c.Window.Padding <= 200, "window.padding must be between 0 and 200")
+	check(c.Prompt.Style == PromptBar || c.Prompt.Style == PromptSymbol, "prompt.style must be bar or symbol, got %q", c.Prompt.Style)
 	check(c.Prompt.Symbol != "" && !strings.ContainsAny(c.Prompt.Symbol, "\n\r\t"), "prompt.symbol must be a non-empty single line")
 	switch c.Cursor.Style {
 	case CursorDot, CursorBlock, CursorBar, CursorUnderline:
