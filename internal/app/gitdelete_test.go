@@ -57,12 +57,12 @@ func TestDeletionsQueueAndPlay(t *testing.T) {
 	if !d.in.start.Before(d.trailAt) || !d.trailAt.Before(d.fallAt) || !d.fallAt.Before(d.back.start) || d.end.Before(d.back.start.Add(d.back.duration())) {
 		t.Fatal("the steps should come in order: roll in, trail, fall, roll back")
 	}
-	// The logo becomes the kind icon, then comes back.
+	// The logo turns red, then gets its color back.
 	if d.iconBlend(now) != 0 || d.iconBlend(d.trailAt) != 1 || d.iconBlend(d.end) != 0 {
 		t.Fatalf("icon blend: %.2f %.2f %.2f", d.iconBlend(now), d.iconBlend(d.trailAt), d.iconBlend(d.end))
 	}
 	if g.branch.shake(d.trailAt.Add(deleteShake/8)) == 0 {
-		t.Fatal("the icon should shake while the trail runs")
+		t.Fatal("the logo should shake while the trail runs")
 	}
 	// One after the other.
 	second := g.branch.deletions[1]

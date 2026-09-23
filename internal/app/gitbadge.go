@@ -108,18 +108,16 @@ func (g *Game) drawGitBadge(dst *ebiten.Image, info projectContext, x, y, right,
 		return x
 	}
 	top := y + (f.lineH-size)/2
-	// While a deletion plays, the logo turns into its red kind icon and
-	// the deleted name takes the branch's place; see gitdelete.go.
+	// While a deletion plays, the logo turns red and the deleted name
+	// takes the branch's place; see gitdelete.go.
 	del := g.branch.activeDeletion(now)
 	blend := 0.0
 	if del != nil {
 		blend = del.iconBlend(now)
 	}
 	shake := g.branch.shake(now) * f.cellW
-	drawGitLogo(dst, x+shake, top, size, g.branch.spin(now), scaleAlpha(g.theme.Foreground, alpha*(1-blend)))
-	if blend > 0 {
-		drawRefIcon(dst, del.ref.kind, x+shake, top, size, g.scale, scaleAlpha(g.theme.Error, alpha*blend))
-	}
+	logo := mixRGBA(g.theme.Foreground, g.theme.Error, blend)
+	drawGitLogo(dst, x+shake, top, size, g.branch.spin(now), scaleAlpha(logo, alpha))
 	g.branch.center = [2]float64{x + size/2, top + size/2}
 	if del != nil {
 		n := g.drawDeletionName(dst, del, x+iconW+gap, y, maxName, alpha, now)

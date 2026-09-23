@@ -9,7 +9,6 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/informeai/doted/internal/fonts"
 )
@@ -18,13 +17,12 @@ import (
 // status line:
 //
 //  1. the current branch's name rolls into the deleted one, turning from
-//     white to the error color, while the Git logo turns into a red icon
-//     for its kind (a branch, or a tag);
+//     white to the error color, while the Git logo turns red;
 //  2. the Tab completion's electric trail runs through the middle of it,
-//     and the icon shakes;
+//     and the logo shakes;
 //  3. its letters fall away one after another, turning into red sparks;
-//  4. the current branch's name rises back into place, and the icon turns
-//     back into the logo.
+//  4. the current branch's name rises back into place, and the logo gets
+//     its color back.
 //
 // Deletions are found by comparing the repository's refs before and after
 // each lookup, so aliases, scripts and other tools count too. Several at
@@ -36,7 +34,7 @@ const (
 	deleteLetterFall  = 420 * time.Millisecond // one letter's fall
 	deleteStagger     = 35 * time.Millisecond  // between letters' falls
 	deleteMaxStagger  = 300 * time.Millisecond // cap on the last letter's delay
-	deleteIconBlend   = 150 * time.Millisecond // logo to icon and back
+	deleteIconBlend   = 150 * time.Millisecond // the logo turning red and back
 	deleteShake       = 400 * time.Millisecond
 	deleteSparks      = 5 // per letter
 	maxDeletionsShown = 3
@@ -138,7 +136,7 @@ func (d *deletion) letterFall(i int, now time.Time) float64 {
 	return math.Max(0, math.Min(1, float64(t)/float64(deleteLetterFall)))
 }
 
-// iconBlend is how much the kind icon has replaced the logo, 0 to 1.
+// iconBlend is how red the logo is, 0 to 1.
 func (d *deletion) iconBlend(now time.Time) float64 {
 	in := float64(now.Sub(d.in.start)) / float64(deleteIconBlend)
 	out := 1 - float64(now.Sub(d.back.start))/float64(deleteIconBlend)
@@ -181,7 +179,7 @@ func (a *branchAnim) activeDeletion(now time.Time) *deletion {
 	return &a.deletions[0]
 }
 
-// shake is the icon's sideways offset while the trail runs, in cells.
+// shake is the logo's sideways offset while the trail runs, in cells.
 func (a *branchAnim) shake(now time.Time) float64 {
 	d := a.activeDeletion(now)
 	if d == nil {
@@ -295,44 +293,4 @@ func (g *Game) drawRuneTurned(dst *ebiten.Image, r rune, cx, cy, angle float64, 
 	op.ColorScale.ScaleWithColor(clr)
 	op.ColorScale.ScaleAlpha(float32(alpha))
 	text.Draw(dst, string(r), f.faces[fonts.Regular], op)
-}
-
-// drawRefIcon draws the icon for a kind of ref in the square of side size
-// at (x, y): a branch, or a tag for tags.
-func drawRefIcon(dst *ebiten.Image, kind refKind, x, y, size, scale float64, clr color.RGBA) {
-	if clr.A == 0 {
-		return
-	}
-	stroke := float32(math.Max(1, 1.2*scale))
-	op := &vector.DrawPathOptions{AntiAlias: true}
-	op.ColorScale.ScaleWithColor(clr)
-	if kind == refTag {
-		// A luggage tag pointing left, with its hole.
-		var p vector.Path
-		m := size * 0.12
-		x0, y0, x1, y1 := x+m, y+size*0.2, x+size-m, y+size*0.8
-		tip := x0 + (y1-y0)/2
-		p.MoveTo(float32(x0), float32((y0+y1)/2))
-		p.LineTo(float32(tip), float32(y0))
-		p.LineTo(float32(x1), float32(y0))
-		p.LineTo(float32(x1), float32(y1))
-		p.LineTo(float32(tip), float32(y1))
-		p.Close()
-		vector.StrokePath(dst, &p, &vector.StrokeOptions{Width: stroke, LineJoin: vector.LineJoinRound}, op)
-		vector.FillCircle(dst, float32(tip+size*0.04), float32((y0+y1)/2), float32(size*0.07), clr, true)
-		return
-	}
-	// A branch: a trunk with a commit at each end and one curving off it.
-	r := math.Max(1.2*scale, size*0.12)
-	trunkX, tipX := x+size*0.3, x+size*0.72
-	topY, bottomY := y+size*0.18, y+size*0.82
-	var p vector.Path
-	p.MoveTo(float32(trunkX), float32(topY+r))
-	p.LineTo(float32(trunkX), float32(bottomY-r))
-	p.MoveTo(float32(tipX), float32(topY+r))
-	p.QuadTo(float32(tipX), float32(y+size*0.6), float32(trunkX), float32(y+size*0.72))
-	vector.StrokePath(dst, &p, &vector.StrokeOptions{Width: stroke, LineCap: vector.LineCapRound}, op)
-	for _, c := range [][2]float64{{trunkX, topY}, {trunkX, bottomY}, {tipX, topY}} {
-		vector.StrokeCircle(dst, float32(c[0]), float32(c[1]), float32(r), stroke, clr, true)
-	}
 }
