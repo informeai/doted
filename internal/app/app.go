@@ -105,6 +105,7 @@ type Game struct {
 	stripScrolledAway          bool                        // scrolled off the newest cards by hand
 	wheelTaken                 bool                        // the strip used this tick's mouse wheel
 	stripGroup                 groupCard                   // the card grouping the jobs past the first ones
+	numEntry                   numberEntry                 // a job number being typed with Ctrl or Alt; see stripnav.go
 	stripRoom                  float64                     // how tall a card may grow: down to the output's bottom
 	cardSparks                 *sparks                     // shed by cards as they leave, on screen in logical px
 	float                      floatWindow                 // a full-screen job being sent to; see jobfloat.go
@@ -287,10 +288,12 @@ func (g *Game) Update() error {
 	g.jobs.Poll(time.Now(), g.handleJobEvent)
 	g.flushNotices()
 	g.watchJobs(time.Now())
+	g.tickNumber(time.Now())
 
 	switch {
 	case (!g.panel.open || g.panel.kind == panelHistory) && clipboardChord(ebiten.KeyF):
 		g.openFind()
+	case g.handleNumberKeys(time.Now()):
 	case g.handleStripKeys(time.Now()):
 	case g.panel.open && g.panel.kind == panelFind:
 		g.handleFindKeys()
@@ -300,7 +303,6 @@ func (g *Game) Update() error {
 		g.handleHistoryKeys()
 	case g.panel.open:
 		g.handlePanelKeys()
-	case altDigit() > 0 && g.sendToCard(altDigit()):
 	case g.target != nil:
 		g.handleTargetKeys()
 	case g.viewing != nil:
@@ -426,8 +428,6 @@ func (g *Game) handleKeyboard() {
 			g.openPanel()
 		case inpututil.IsKeyJustPressed(ebiten.KeyR):
 			g.openHistorySearch()
-		case stripDigit() > 0:
-			g.openStripCard(stripDigit())
 		case inpututil.IsKeyJustPressed(ebiten.KeyD):
 			if g.editor.Empty() {
 				g.requestQuit()

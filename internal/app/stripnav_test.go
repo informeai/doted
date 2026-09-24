@@ -246,3 +246,44 @@ func TestSendingToACardShowsTenLines(t *testing.T) {
 	}
 	g.exitTarget()
 }
+
+func TestMultiDigitJobNumbers(t *testing.T) {
+	g := newTestGame(t)
+	for range 12 {
+		run(g, "sleep 30 &")
+	}
+	now := time.Now()
+
+	// 1 could still become 10, 11 or 12: it waits, showing #1 selected.
+	g.numberDigit(1, false, now)
+	if g.viewing != nil || g.stripSel == nil || g.stripSel.ID != 1 || g.numberHint() != "open #1…" {
+		t.Fatalf("after 1: viewing %v, selected %v, hint %q", g.viewing, g.stripSel, g.numberHint())
+	}
+	// 12 can't grow: it opens right away.
+	g.numberDigit(2, false, now)
+	if g.viewing == nil || g.viewing.ID != 12 || g.numEntry.digits != "" {
+		t.Fatalf("after 12: viewing %v", g.viewing)
+	}
+	g.closeJob()
+
+	// 3 can't become anything longer either.
+	g.numberDigit(3, false, now)
+	if g.viewing == nil || g.viewing.ID != 3 {
+		t.Fatalf("after 3: viewing %v", g.viewing)
+	}
+	g.closeJob()
+
+	// Letting go of Alt after 1 sends to #1.
+	g.numberDigit(1, true, now)
+	g.finishNumber()
+	if g.target == nil || g.target.ID != 1 {
+		t.Fatalf("alt+1, let go: target %v", g.target)
+	}
+	g.exitTarget()
+
+	// No job starts with 0.
+	g.numberDigit(0, false, now)
+	if g.viewing != nil || g.numEntry.digits != "" || g.flashText != "no job #0" {
+		t.Fatalf("after 0: viewing %v, flash %q", g.viewing, g.flashText)
+	}
+}

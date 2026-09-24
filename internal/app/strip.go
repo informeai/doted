@@ -268,14 +268,14 @@ func (g *Game) openStripCard(n int) bool {
 	return true
 }
 
-// stripDigit is the digit key pressed this tick, 1 to 9, or 0.
-func stripDigit() int {
-	for i, k := range []ebiten.Key{ebiten.Key1, ebiten.Key2, ebiten.Key3, ebiten.Key4, ebiten.Key5, ebiten.Key6, ebiten.Key7, ebiten.Key8, ebiten.Key9} {
+// digitPressed is the digit key pressed this tick, 0 to 9, or -1.
+func digitPressed() int {
+	for i, k := range []ebiten.Key{ebiten.Key0, ebiten.Key1, ebiten.Key2, ebiten.Key3, ebiten.Key4, ebiten.Key5, ebiten.Key6, ebiten.Key7, ebiten.Key8, ebiten.Key9} {
 		if inpututil.IsKeyJustPressed(k) {
-			return i + 1
+			return i
 		}
 	}
-	return 0
+	return -1
 }
 
 // jobName is a short name for a command: the script of a package manager

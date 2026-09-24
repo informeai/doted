@@ -676,6 +676,8 @@ func (g *Game) statusHint(now time.Time) (hint string, spinner bool) {
 	switch {
 	case g.flashText != "" && now.Before(g.flashUntil):
 		hint = g.flashText
+	case g.numEntry.digits != "":
+		hint = g.numberHint()
 	case g.stripSel != nil || g.groupSel:
 		hint = g.selectionHint()
 	case g.target != nil:

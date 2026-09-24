@@ -3,6 +3,8 @@ package app
 import (
 	"fmt"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -12,6 +14,10 @@ import (
 )
 
 // Getting around the job strip from the keyboard.
+//
+// Ctrl+number opens a job and Alt+number types to it, by the number on its
+// card. Numbers of more than one digit are typed in a row with the key
+// held (Alt+1 then Alt+2 is #12); see numberEntry.
 //
 // The strip shows the first strip_cards jobs; the ones after them wait in
 // a group card on the right. Alt+Left and Alt+Right move a selection along
@@ -217,4 +223,123 @@ func (g *Game) selectionHint() string {
 		return fmt.Sprintf("%d grouped %s · → or enter to go through them · esc closes", len(grouped), plural(len(grouped), "job", "jobs"))
 	}
 	return fmt.Sprintf("#%d %s · enter open · alt+s send · alt+r restart · alt+. stop · esc", g.stripSel.ID, g.watchOf(g.stripSel).name)
+}
+
+// numberEntry is a job number being typed with Ctrl or Alt held. It goes
+// ahead as soon as no other job's number starts with it, when the key is
+// let go, or after numberWait without another digit; meanwhile, its card
+// shows selected.
+type numberEntry struct {
+	digits string
+	send   bool // Alt: type to the job; Ctrl: open it
+	at     time.Time
+	prior  *jobs.Job // the selection before, to put back if it's called off
+}
+
+const numberWait = 600 * time.Millisecond
+
+// handleNumberKeys handles Ctrl+number and Alt+number, reporting whether
+// it took this tick's keyboard.
+func (g *Game) handleNumberKeys(now time.Time) bool {
+	ctrl := ebiten.IsKeyPressed(ebiten.KeyControl)
+	alt := ebiten.IsKeyPressed(ebiten.KeyAlt)
+	meta := ebiten.IsKeyPressed(ebiten.KeyMeta)
+	d := digitPressed()
+	if d < 0 || meta || ctrl == alt || g.screenJob() != nil {
+		return false
+	}
+	// Ctrl+number belongs to a running command; Alt+number reaches cards
+	// from anywhere.
+	if ctrl && (g.attached != nil || g.viewing != nil || g.target != nil) {
+		return false
+	}
+	ebiten.AppendInputChars(g.chars[:0]) // Option+digit types a symbol on macOS; drop it
+	g.numberDigit(d, alt, now)
+	return true
+}
+
+// tickNumber goes ahead with the number being typed once its key is let
+// go or no digit came for a while. Update calls it every tick.
+func (g *Game) tickNumber(now time.Time) {
+	e := g.numEntry
+	if e.digits == "" {
+		return
+	}
+	held := e.send && ebiten.IsKeyPressed(ebiten.KeyAlt) || !e.send && ebiten.IsKeyPressed(ebiten.KeyControl)
+	if !held || now.Sub(e.at) >= numberWait {
+		g.finishNumber()
+	}
+}
+
+// numberDigit adds digit d to the number being typed (send: Alt, else
+// Ctrl), going ahead when no other job's number starts with it.
+func (g *Game) numberDigit(d int, send bool, now time.Time) {
+	e := &g.numEntry
+	if e.digits == "" || e.send != send {
+		*e = numberEntry{send: send, prior: g.stripSel}
+	}
+	e.digits += strconv.Itoa(d)
+	e.at = now
+	exact, longer := g.numberMatches(e.digits)
+	switch {
+	case exact == nil && !longer:
+		g.cancelNumber()
+		g.flash("no job #" + e.digits)
+		e.digits = ""
+	case exact != nil && !longer:
+		g.finishNumber() // nothing else could follow
+	default:
+		g.stripSel = exact // a preview, while more digits may come
+	}
+}
+
+// numberMatches finds the job numbered digits, and whether another job's
+// number starts with them.
+func (g *Game) numberMatches(digits string) (exact *jobs.Job, longer bool) {
+	for _, j := range g.stripJobs(time.Now()) {
+		id := strconv.Itoa(j.ID)
+		switch {
+		case id == digits:
+			exact = j
+		case strings.HasPrefix(id, digits):
+			longer = true
+		}
+	}
+	return exact, longer
+}
+
+// finishNumber opens, or types to, the job whose number was typed.
+func (g *Game) finishNumber() {
+	e := g.numEntry
+	g.numEntry = numberEntry{}
+	if e.digits == "" {
+		return
+	}
+	exact, _ := g.numberMatches(e.digits)
+	g.stripSel = e.prior
+	if exact == nil {
+		g.flash("no job #" + e.digits)
+		return
+	}
+	if e.send {
+		g.stripSel = nil
+		g.enterTarget(exact)
+		return
+	}
+	g.clearSelection()
+	g.openJob(exact)
+}
+
+// cancelNumber calls off the number being typed.
+func (g *Game) cancelNumber() {
+	g.stripSel = g.numEntry.prior
+}
+
+// numberHint is the status line while a number is being typed.
+func (g *Game) numberHint() string {
+	verb := "open"
+	if g.numEntry.send {
+		verb = "send to"
+	}
+	return verb + " #" + g.numEntry.digits + "…"
 }

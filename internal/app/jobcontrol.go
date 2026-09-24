@@ -245,14 +245,6 @@ func (g *Game) targetPrompt() string {
 	return "→ " + g.watchOf(g.target).name + " › "
 }
 
-// altDigit is the card number of Alt+1..9 pressed this tick, or 0.
-func altDigit() int {
-	if !ebiten.IsKeyPressed(ebiten.KeyAlt) || ebiten.IsKeyPressed(ebiten.KeyControl) || ebiten.IsKeyPressed(ebiten.KeyMeta) {
-		return 0
-	}
-	return stripDigit()
-}
-
 // sendToCard points the input line at job #n, as Alt+n does; the strip
 // scrolls to its card.
 func (g *Game) sendToCard(n int) bool {
