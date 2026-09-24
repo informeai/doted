@@ -146,6 +146,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 	g.stripRoom = outputBottom - pad
 	g.drawStrip(screen, pad, w-pad, pad, now)
+	if g.cardSparks != nil {
+		g.cardSparks.draw(screen, 0, 0, g.scale, g.theme.Accent, g.theme.Foreground)
+	}
 	switch {
 	case g.panel.open && g.panel.kind == panelHelp:
 		g.drawHelpPanel(screen, pad, w-pad, upperRule-gap)

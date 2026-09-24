@@ -66,6 +66,7 @@ type jobWatch struct {
 	mini       float64
 	miniTarget float64
 	grouped    bool      // it waits in the group card, out of view
+	shed       bool      // it shed its sparks as it left
 	fullH      float64   // its whole card's height, growing while selected
 	promotedAt time.Time // when it moved up out of the group
 

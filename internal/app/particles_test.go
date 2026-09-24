@@ -1,6 +1,7 @@
 package app
 
 import (
+	"image/color"
 	"math"
 	"testing"
 
@@ -87,5 +88,25 @@ func TestPromptText(t *testing.T) {
 	g.cfg.Prompt.Style, g.cfg.Prompt.Symbol = config.PromptSymbol, "$ "
 	if got := g.promptText(); got != "$ " {
 		t.Fatalf("symbol prompt = %q", got)
+	}
+}
+
+func TestBurstLineFallsTheWayAsked(t *testing.T) {
+	s := newSparks(1)
+	red := color.RGBA{0xff, 0, 0, 0xff}
+	s.burstLine(30, 10, 110, 50, math.Pi*0.2, math.Pi*0.8, red)
+	if len(s.items) != 30 {
+		t.Fatalf("%d sparks", len(s.items))
+	}
+	for _, p := range s.items {
+		if p.x < 10 || p.x > 110 || p.y != 50 {
+			t.Fatalf("spark at (%.0f, %.0f), off the segment", p.x, p.y)
+		}
+		if p.vy <= 0 {
+			t.Fatalf("spark going up (vy %.1f); it should fall", p.vy)
+		}
+		if p.clr != red {
+			t.Fatal("spark should keep its color")
+		}
 	}
 }

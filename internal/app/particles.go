@@ -30,7 +30,8 @@ type spark struct {
 	x, y, vx, vy float64
 	age, life    float64
 	size         float64
-	light        bool // a lighter spark among the accent ones
+	light        bool       // a lighter spark among the accent ones
+	clr          color.RGBA // its own color, when set, instead of the accent
 }
 
 type sparks struct {
@@ -74,6 +75,29 @@ func (s *sparks) burstAt(n int, x, y float64) {
 	}
 }
 
+// burstLine fires n sparks in clr from random points along the segment
+// from (x0, y) to (x1, y), in logical px, in directions between angle
+// from and to (radians; 0 points right, π/2 down).
+func (s *sparks) burstLine(n int, x0, x1, y, from, to float64, clr color.RGBA) {
+	for range n {
+		angle := lerpF(from, to, s.rng.Float64())
+		speed := lerpF(sparkMinSpeed, sparkMaxSpeed, s.rng.Float64())
+		s.items = append(s.items, spark{
+			x:     lerpF(x0, x1, s.rng.Float64()),
+			y:     y,
+			vx:    math.Cos(angle) * speed,
+			vy:    math.Sin(angle) * speed,
+			life:  lerpF(sparkMinLife, sparkMaxLife, s.rng.Float64()),
+			size:  lerpF(sparkMinSize, sparkMaxSize, s.rng.Float64()),
+			light: s.rng.Float64() < 0.25,
+			clr:   clr,
+		})
+	}
+	if over := len(s.items) - maxSparks; over > 0 {
+		s.items = s.items[over:]
+	}
+}
+
 // step advances every spark by dt seconds and drops the ones that faded.
 func (s *sparks) step(dt float64) {
 	drag := math.Exp(-sparkDrag * dt)
@@ -97,8 +121,11 @@ func (s *sparks) draw(dst *ebiten.Image, ox, oy, scale float64, accent, light co
 	for _, p := range s.items {
 		fade := 1 - p.age/p.life
 		clr := accent
-		if p.light {
+		switch {
+		case p.light:
 			clr = light
+		case p.clr.A != 0:
+			clr = p.clr
 		}
 		r := p.size * scale * (0.4 + 0.6*fade) // shrink as it fades
 		vector.FillCircle(dst, float32(ox+p.x*scale), float32(oy+p.y*scale), float32(r), scaleAlpha(clr, fade*fade), true)

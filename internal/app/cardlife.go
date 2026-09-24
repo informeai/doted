@@ -526,6 +526,12 @@ func (g *Game) drawCard(dst *ebiten.Image, j *jobs.Job, x, y, w, h, contentW, sm
 		}
 		alpha *= 1 - exit
 		dy -= exit * h * 0.8
+		// Halfway out, it sheds sparks from its top edge, falling back the
+		// other way.
+		if exit > 0.5 && !wt.shed && g.cfg.Animation.Particles {
+			wt.shed = true
+			g.shedSparks(x, x+w, y+dy, g.jobColor(j))
+		}
 	}
 	mx, my := ebiten.CursorPosition()
 	hover := float64(mx) >= x && float64(mx) < x+w && float64(my) >= y && float64(my) < y+h
@@ -578,6 +584,16 @@ func (g *Game) drawCard(dst *ebiten.Image, j *jobs.Job, x, y, w, h, contentW, sm
 		g.drawMini(clip, j, x, y, h, state, smallAlpha, now)
 	}
 	g.stripHits = append(g.stripHits, stripHit{x0: x, y0: y, x1: x + w, y1: y + h, job: j})
+}
+
+// shedSparks fires sparks down from the segment from (x0, y) to (x1, y)
+// on screen, as a card leaves up through the top.
+func (g *Game) shedSparks(x0, x1, y float64, clr color.RGBA) {
+	if g.cardSparks == nil {
+		g.cardSparks = newSparks(uint64(time.Now().UnixNano()))
+	}
+	n := min(64, max(28, int((x1-x0)/g.scale/4)))
+	g.cardSparks.burstLine(n, x0/g.scale, x1/g.scale, y/g.scale, math.Pi*0.2, math.Pi*0.8, clr)
 }
 
 // drawPill draws a finished job's result in its pill at (x, y) of height h:

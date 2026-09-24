@@ -106,6 +106,7 @@ type Game struct {
 	wheelTaken                 bool                        // the strip used this tick's mouse wheel
 	stripGroup                 groupCard                   // the card grouping the jobs past the first ones
 	stripRoom                  float64                     // how tall a card may grow: down to the output's bottom
+	cardSparks                 *sparks                     // shed by cards as they leave, on screen in logical px
 	target                     *jobs.Job                   // the job the input line sends to; see jobcontrol.go
 	targetRaw                  bool                        // it reads a key at a time
 	stash                      string                      // the shell line put aside meanwhile
@@ -312,6 +313,9 @@ func (g *Game) Update() error {
 	g.updateZap(time.Now())
 	g.sparks.step(tickSeconds)
 	g.stepBranch()
+	if g.cardSparks != nil {
+		g.cardSparks.step(tickSeconds)
+	}
 	g.trackDir(time.Now())
 	if g.focusChanged() {
 		g.context.stale = true
