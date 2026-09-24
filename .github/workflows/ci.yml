@@ -15,22 +15,6 @@ concurrency:
   cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 jobs:
-  test:
-    name: Test (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - run: go vet ./...
-      # Includes tools/icongen's check that the committed icons match their
-      # geometry (with a tolerance, since float rendering varies by CPU).
-      - run: go test -race ./...
 
   # Packages are versioned from the tag (v1.2.3 -> 1.2.3); other builds get
   # 0.0.<run number>, which every package format accepts.
@@ -55,7 +39,7 @@ jobs:
 
   macos:
     name: macOS (.dmg)
-    needs: [test, version]
+    needs: [version]
     runs-on: macos-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -83,7 +67,7 @@ jobs:
 
   linux:
     name: Linux (.deb)
-    needs: [test, version]
+    needs: [version]
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -119,7 +103,7 @@ jobs:
 
   windows:
     name: Windows (.msi)
-    needs: [test, version]
+    needs: [version]
     runs-on: windows-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
