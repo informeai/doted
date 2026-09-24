@@ -146,7 +146,7 @@ Para não poluir a tela, a faixa mostra no máximo 4 cartões, sempre os dos pri
 
 O grupo acompanha o que acontece com os jobs dele. Quando um cartão fixo sai, o próximo job do grupo sai da pilha e desliza até a vaga, com um brilho na cor de destaque. Quando um job agrupado termina, o grupo pisca na cor do resultado e a barra de status avisa (`#6 migrate finished in 1.0s` ou `#6 test failed (exit 1) · alt+6 to see it`). Um job agrupado que terminou bem sai depois de 2,5 segundos, já que o cartão dele não está à vista; um que falhou continua 20 segundos, para dar tempo de ir até ele. Sempre que a quantidade muda, o número rola (`+3` → `+2`) e a pilha dá um pequeno pulo.
 
-Cada cartão mostra as 3 últimas linhas da saída (`[jobs] strip_lines`); o cartão selecionado mostra as 5 últimas, e para ver tudo basta abrir o job (Enter ou clique).
+Cada cartão mostra as 3 últimas linhas da saída (`[jobs] strip_lines`). O cartão selecionado cresce para baixo e mostra as 10 últimas (o mesmo vale para o que está recebendo o teclado), sobre a saída e sem empurrar a faixa nem os outros cartões, que continuam do mesmo tamanho; ele volta ao normal quando a seleção sai. Para ver tudo, basta abrir o job (Enter ou clique).
 
 Quando os cartões visíveis não cabem, a faixa primeiro recolhe os jobs quietos (sem saída há mais de 10 segundos) em cartões de uma linha, como `● #2 worker · 12m`; os que estão ativos, com erro, selecionados ou recebendo o teclado continuam inteiros. Depois, os cartões se estreitam até um mínimo legível. Só se nem assim couber (numa janela muito estreita) a faixa vira um carrossel: setas nas pontas mostram quantos cartões estão fora de vista de cada lado (`‹ 2`, `3 ›`), e clicar nelas ou usar a roda do mouse sobre a faixa rola, com animação.
 

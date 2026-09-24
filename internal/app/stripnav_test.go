@@ -127,13 +127,27 @@ func TestStripGroupOpensAndCloses(t *testing.T) {
 
 func TestSelectedCardShowsMoreLines(t *testing.T) {
 	g := newTestGame(t)
+	g.faces = newFaceSet(g.family, g.cfg.Font, 1)
 	run(g, "sleep 30 &")
-	if g.stripLines(time.Now()) != 3 {
-		t.Fatalf("cards show %d lines, want 3", g.stripLines(time.Now()))
+	run(g, "sleep 30 &")
+	now := time.Now()
+	one, two := g.stripJob(1), g.stripJob(2)
+	if g.cardLines(one) != 3 || g.cardLines(two) != 3 {
+		t.Fatalf("cards show %d and %d lines, want 3", g.cardLines(one), g.cardLines(two))
 	}
+	before := g.stripHeight(now)
+
 	g.selectCard(1)
-	if g.stripLines(time.Now()) != selectedLines {
-		t.Fatalf("the selected card shows %d lines, want %d", g.stripLines(time.Now()), selectedLines)
+	// Only the selected card shows more, and the strip keeps its height:
+	// the card grows down over the output instead.
+	if g.cardLines(one) != selectedLines || g.cardLines(two) != 3 {
+		t.Fatalf("selected shows %d, the other %d", g.cardLines(one), g.cardLines(two))
+	}
+	if g.stripHeight(now) != before {
+		t.Fatalf("strip height %.0f → %.0f", before, g.stripHeight(now))
+	}
+	if g.fullCardHeight(two) >= g.linesHeight(selectedLines) {
+		t.Fatal("the other card grew too")
 	}
 }
 
@@ -199,4 +213,36 @@ func TestPromotedCardComesFromThePile(t *testing.T) {
 	if w1.x != 0 || w1.w != 0 || !w1.promotedAt.IsZero() {
 		t.Fatalf("#1 starts at %.0f, %.0f wide", w1.x, w1.w)
 	}
+}
+
+func TestSelectedCardGrowsWithinTheOutput(t *testing.T) {
+	g := newTestGame(t)
+	g.faces = newFaceSet(g.family, g.cfg.Font, 1)
+	run(g, "sleep 30 &")
+	g.selectCard(1)
+	j := g.stripJob(1)
+	if g.cardLines(j) != selectedLines {
+		t.Fatalf("with room: %d lines", g.cardLines(j))
+	}
+	// A short window: it grows only as far as the output goes.
+	g.stripRoom = 7.5 * g.faces.lineH
+	if n := g.cardLines(j); n != 6 {
+		t.Fatalf("short window: %d lines, want 6", n)
+	}
+	// Never less than usual.
+	g.stripRoom = 2 * g.faces.lineH
+	if n := g.cardLines(j); n != g.cfg.Jobs.StripLines {
+		t.Fatalf("tiny window: %d lines", n)
+	}
+}
+
+func TestSendingToACardShowsTenLines(t *testing.T) {
+	g := newTestGame(t)
+	run(g, "read x &")
+	run(g, "sleep 30 &")
+	g.sendToCard(1)
+	if g.cardLines(g.stripJob(1)) != 10 || g.cardLines(g.stripJob(2)) != g.cfg.Jobs.StripLines {
+		t.Fatalf("sent to: %d lines, other: %d", g.cardLines(g.stripJob(1)), g.cardLines(g.stripJob(2)))
+	}
+	g.exitTarget()
 }

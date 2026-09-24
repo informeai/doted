@@ -66,6 +66,7 @@ type jobWatch struct {
 	mini       float64
 	miniTarget float64
 	grouped    bool      // it waits in the group card, out of view
+	fullH      float64   // its whole card's height, growing while selected
 	promotedAt time.Time // when it moved up out of the group
 
 	// Driving it from its card; see jobcontrol.go.
@@ -154,17 +155,21 @@ func (g *Game) linger(j *jobs.Job) time.Duration {
 	return stripLingerOK
 }
 
-// stripLines is how many lines of output the strip's cards have room for:
-// more while one of them is being sent to.
-func (g *Game) stripLines(now time.Time) int {
-	n := g.cfg.Jobs.StripLines
-	for _, j := range g.stripJobs(now) {
-		switch j {
-		case g.target:
-			n = max(n, targetLines)
-		case g.stripSel:
-			n = max(n, selectedLines)
-		}
+// cardLines is how many lines of output job j's card shows: strip_lines,
+// or more while it's selected or being sent to, as far as the output area
+// leaves room for it to grow into.
+func (g *Game) cardLines(j *jobs.Job) int {
+	base := g.cfg.Jobs.StripLines
+	n := base
+	switch j {
+	case g.target:
+		n = max(n, targetLines)
+	case g.stripSel:
+		n = max(n, selectedLines)
+	}
+	if g.faces != nil && g.stripRoom > 0 {
+		fit := int((g.stripRoom-g.faces.lineH/2)/g.faces.lineH) - 1
+		n = min(n, max(base, fit))
 	}
 	return n
 }
@@ -416,14 +421,7 @@ func (g *Game) drawCardContent(dst *ebiten.Image, j *jobs.Job, wt *jobWatch, x, 
 	}
 
 	// The last lines, errors in red.
-	shown := g.cfg.Jobs.StripLines
-	switch j {
-	case g.target:
-		shown = max(shown, targetLines) // the one being sent to shows more
-	case g.stripSel:
-		shown = max(shown, selectedLines) // and so does the selected one
-	}
-	for i, line := range j.Tail(shown) {
+	for i, line := range j.Tail(g.cardLines(j)) {
 		clr, a := g.theme.Foreground, alpha*0.7
 		if isError(line) {
 			clr, a = g.theme.Error, alpha

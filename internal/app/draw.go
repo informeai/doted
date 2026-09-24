@@ -127,6 +127,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawScrollback(screen, sb, jobCursor, outputTop, outputBottom, now)
 		g.drawLinkHover(screen)
 	}
+	g.stripRoom = outputBottom - pad
 	g.drawStrip(screen, pad, w-pad, pad, now)
 	switch {
 	case g.panel.open && g.panel.kind == panelHelp:

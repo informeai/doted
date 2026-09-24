@@ -29,7 +29,7 @@ import (
 
 const (
 	quietAfter    = 10 * time.Second // a job printing nothing this long may shrink to one line
-	selectedLines = 5                // lines the selected card shows
+	selectedLines = 10               // lines the selected card shows
 )
 
 // stripFocus is the card the strip keeps in view: the selected one, else

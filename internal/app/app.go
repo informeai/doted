@@ -105,6 +105,7 @@ type Game struct {
 	stripScrolledAway          bool                        // scrolled off the newest cards by hand
 	wheelTaken                 bool                        // the strip used this tick's mouse wheel
 	stripGroup                 groupCard                   // the card grouping the jobs past the first ones
+	stripRoom                  float64                     // how tall a card may grow: down to the output's bottom
 	target                     *jobs.Job                   // the job the input line sends to; see jobcontrol.go
 	targetRaw                  bool                        // it reads a key at a time
 	stash                      string                      // the shell line put aside meanwhile

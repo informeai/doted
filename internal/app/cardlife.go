@@ -101,10 +101,20 @@ func (g *Game) pillSize(j *jobs.Job) (w, h float64) {
 	return f.cellW*(0.9+1.2+0.6+0.9) + float64(utf8.RuneCountInString(g.pillLabel(j)))*f.cellW, f.lineH * 1.5
 }
 
-// fullCardHeight is the height of a whole card.
-func (g *Game) fullCardHeight(now time.Time) float64 {
+// linesHeight is the height of a whole card showing n lines of output.
+func (g *Game) linesHeight(n int) float64 {
 	f := g.faces
-	return float64(1+g.stripLines(now))*f.lineH + f.lineH/2
+	return float64(1+n)*f.lineH + f.lineH/2
+}
+
+// fullCardHeight is the height of job j's whole card: taller while it's
+// selected or being sent to, growing and shrinking smoothly (see
+// drawStrip).
+func (g *Game) fullCardHeight(j *jobs.Job) float64 {
+	if w := g.watchOf(j); w.fullH > 0 {
+		return w.fullH
+	}
+	return g.linesHeight(g.cardLines(j))
 }
 
 // miniLabel is what the one-line card of a quiet running job says.
@@ -133,20 +143,24 @@ func (g *Game) smallness(j *jobs.Job, now time.Time) float64 {
 // cardHeight is job j's card's height now.
 func (g *Game) cardHeight(j *jobs.Job, now time.Time) float64 {
 	_, sh := g.smallSize(j, now)
-	return lerp(g.fullCardHeight(now), sh, g.smallness(j, now))
+	return lerp(g.fullCardHeight(j), sh, g.smallness(j, now))
 }
 
-// stripHeight is how tall the strip is now, 0 without cards: the tallest
-// card, so it shrinks once they're all small.
+// stripHeight is how tall the strip is now, 0 without cards: as tall as a
+// card at its usual size, so it shrinks once they're all small. A card
+// that grows as it's selected spreads down over the output instead of
+// pushing it.
 func (g *Game) stripHeight(now time.Time) float64 {
 	if g.faces == nil {
 		return 0
 	}
 	h := 0.0
 	shown, _, _ := g.stripGroups(now)
+	usual := g.linesHeight(g.cfg.Jobs.StripLines)
 	for _, j := range shown {
 		_, e := g.cardPhase(j, now)
-		h = math.Max(h, g.cardHeight(j, now)*(1-e)) // a leaving card gives its room back
+		_, sh := g.smallSize(j, now)
+		h = math.Max(h, lerp(usual, sh, g.smallness(j, now))*(1-e)) // a leaving card gives its room back
 	}
 	return h
 }
@@ -291,6 +305,12 @@ func (g *Game) drawStrip(dst *ebiten.Image, left, right, y float64, now time.Tim
 	for _, j := range cards {
 		w := g.watchOf(j)
 		w.mini += (w.miniTarget - w.mini) * k
+		// Selected or sent to, a card grows down to show more lines.
+		target := g.linesHeight(g.cardLines(j))
+		if w.fullH == 0 {
+			w.fullH = target
+		}
+		w.fullH += (target - w.fullH) * k
 	}
 	// Jobs past the first ones wait in a group card on the right; while
 	// it's open, its jobs show and it leads them on the left.

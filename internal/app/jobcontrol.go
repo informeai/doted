@@ -23,7 +23,7 @@ import (
 
 const (
 	stopToKill  = 3 * time.Second // a second stop within this kills the job
-	targetLines = 6               // lines the card of the job being sent to shows
+	targetLines = selectedLines   // lines the card of the job being sent to shows
 )
 
 // restartJob runs j's command again in its place, once j has ended.
