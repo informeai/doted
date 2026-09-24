@@ -37,7 +37,7 @@ go build -o doted .
 
 Cada comando roda em `$SHELL -c` dentro de um pseudo-terminal, no diretório atual do doted. Enquanto um comando está rodando, o teclado vai direto para ele, então prompts de senha, perguntas `y/n` e REPLs como `python3` funcionam.
 
-Com zsh ou bash, o shell se comporta como uma sessão contínua: variáveis exportadas (`export`, `source .env`, `nvm use`), o diretório (inclusive um `cd` dentro de `cd pasta && make`), aliases e funções passam de um comando para o próximo. Ao abrir, o doted carrega os aliases e funções do seu `~/.zshrc` ou `~/.bashrc` em segundo plano, e eles contam como comandos válidos na coloração e nas sugestões. Cada comando continua sendo um processo próprio, por isso eles podem rodar lado a lado e ir para o background; o estado de um comando que terminou em background é descartado, para não desfazer o que veio depois. Variáveis sem `export` não passam de um comando para o outro. Em outros shells (sh, fish), cada comando começa do zero, como antes.
+Com zsh ou bash, o shell se comporta como uma sessão contínua: variáveis exportadas (`export`, `source .env`, `nvm use`), o diretório (inclusive um `cd` dentro de `cd pasta && make`), aliases e funções passam de um comando para o próximo. Ao abrir, o doted carrega os aliases e funções do seu `~/.zshrc` ou `~/.bashrc` em segundo plano, e eles contam como comandos válidos na coloração e nas sugestões. O shell usado é o de `[shell] program` ou, sem ele, o `$SHELL`; o tipo (zsh, bash ou outro) vem do nome do programa. Um `PATH` alterado por `export` vale também para o doted: ele confere os comandos contra esse `PATH` ao colorir e sugerir. Cada comando continua sendo um processo próprio, por isso eles podem rodar lado a lado e ir para o background; o estado de um comando que terminou em background é descartado, para não desfazer o que veio depois. Variáveis sem `export` não passam de um comando para o outro. Em outros shells (sh, fish), cada comando começa do zero, como antes.
 
 O histórico de comandos é salvo em `~/.local/share/doted/history` (ou `$XDG_DATA_HOME/doted/history`) e volta quando você abre o doted de novo, alimentando o ↑ e as sugestões. Como no bash, um comando que começa com espaço não é salvo, o que é útil para linhas com senhas ou tokens.
 
@@ -271,7 +271,7 @@ O ícone do app é desenhado por `tools/icongen`, que é a única fonte da geome
 Observações:
 
 - O `.app` usa assinatura ad hoc, sem Apple Developer ID nem notarização. Na primeira abertura, o macOS bloqueia o app: clique com o botão direito em `doted.app` e escolha **Abrir**.
-- Quando aberto pelo Finder ou pelo menu de aplicativos, o doted começa na pasta pessoal e carrega o ambiente do shell de login (PATH do `.zprofile`/`.profile`), como os outros terminais.
+- Quando aberto pelo Finder ou pelo menu de aplicativos, o doted começa na pasta pessoal e monta o ambiente como um terminal faria: o do shell de login (`.zshenv`, `.zprofile` e `.zlogin` no zsh; `.bash_profile` ou `.profile` no bash) e, por cima, o que os arquivos interativos exportam (`.zshrc` ou `.bashrc`), onde costumam ficar o `PATH` de ferramentas como Go e o nvm. Aberto por outro terminal, ele herda o ambiente dele, que já passou por esses arquivos.
 - No Windows o doted instala e abre, mas ainda não executa comandos, porque o suporte a PTY (ConPTY) ainda não foi implementado.
 - O instalador usa o WiX Toolset 5, a última versão apenas sob a licença MS-RL. As versões 6 e posteriores exigem a Open Source Maintenance Fee.
 

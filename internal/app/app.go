@@ -115,6 +115,7 @@ type Game struct {
 	stash                      string                      // the shell line put aside meanwhile
 	opener                     func(*Game, []string) error // starts the program that opens a link
 	notifier                   func(title, body string)    // shows a desktop notification
+	desktop                    bool                        // opened from Finder or a launcher; see launchedFromDesktop
 	outTop, outBottom, outLeft float64
 }
 
@@ -158,6 +159,7 @@ func New(s Settings, configPath string) (*Game, error) {
 	g.loadHistory()
 	g.trackDir(time.Now())
 	g.watchContext(time.Now()) // start looking up the git branch right away
+	g.desktop = desktop
 	if desktop {
 		if err := g.session.ImportLoginEnvironment(loginEnvTimeout); err != nil {
 			g.notify(terminal.Error, err.Error())
@@ -194,6 +196,11 @@ func (g *Game) handleDefinitions() {
 			return
 		}
 		g.session.UseDefinitions(d.path)
+		// Opened from the desktop, commands also take the environment the
+		// shell's startup files set up (from a terminal, they inherit it).
+		if g.desktop && g.session.UseStartupEnvironment(d.path) {
+			g.lookups, g.suggest = nil, suggestCache{} // the PATH may have changed
+		}
 	default:
 	}
 }

@@ -208,7 +208,9 @@ func (s *Session) CaptureDefinitions(timeout time.Duration) func() (string, erro
 	return func() (string, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, shell, "-i", "-c", "{ "+dumpDefinitions(kind)+"; } >\"$1\" 2>/dev/null", "doted", out)
+		// The environment the startup files leave goes next to the
+		// definitions; see UseStartupEnvironment.
+		cmd := exec.CommandContext(ctx, shell, "-i", "-c", "{ "+dumpDefinitions(kind)+"; } >\"$1\" 2>/dev/null; env -0 >\"$1.env\"", "doted", out)
 		cmd.Env = env
 		cmd.WaitDelay = time.Second // a daemon started by the rc may keep stdout open
 		if err := cmd.Run(); err != nil {
@@ -218,6 +220,25 @@ func (s *Session) CaptureDefinitions(timeout time.Duration) func() (string, erro
 		}
 		return out, nil
 	}
+}
+
+// UseStartupEnvironment makes the environment the shell's interactive
+// startup files left (~/.zshrc, ~/.bashrc), captured along with the
+// definitions at defsPath, the one commands start from. An app opened from
+// the desktop needs it: the login environment it imports doesn't run those
+// files, and they're where PATH and tools like nvm are often set up. It
+// reports whether there was one.
+func (s *Session) UseStartupEnvironment(defsPath string) bool {
+	data, err := os.ReadFile(defsPath + ".env")
+	if err != nil {
+		return false
+	}
+	vars := s.cleanEnv(data)
+	if len(vars) == 0 {
+		return false
+	}
+	s.base = vars
+	return true
 }
 
 // UseDefinitions makes the definitions file at path the one commands start
