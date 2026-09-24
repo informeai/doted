@@ -31,12 +31,13 @@ import (
 // jobcontrol.go).
 
 const (
-	stripMinCols    = 30 // a card's narrowest width, in cells
-	stripGapCols    = 1  // between cards
-	stripEnter      = 220 * time.Millisecond
-	stripLingerOK   = 6 * time.Second  // a finished card stays this long
-	stripLingerFail = 20 * time.Second // longer when it failed
-	stripFlash      = 700 * time.Millisecond
+	stripMinCols       = 30 // a card's narrowest width, in cells
+	stripGapCols       = 1  // between cards
+	stripEnter         = 220 * time.Millisecond
+	stripLingerOK      = 6 * time.Second         // a finished card stays this long
+	stripLingerFail    = 20 * time.Second        // longer when it failed
+	stripLingerGrouped = 2500 * time.Millisecond // shorter when it ended in the group
+	stripFlash         = 700 * time.Millisecond
 )
 
 var (
@@ -64,6 +65,8 @@ type jobWatch struct {
 	placed     bool
 	mini       float64
 	miniTarget float64
+	grouped    bool      // it waits in the group card, out of view
+	promotedAt time.Time // when it moved up out of the group
 
 	// Driving it from its card; see jobcontrol.go.
 	restarting bool      // it was killed to run again
@@ -141,8 +144,12 @@ func (g *Game) stripJobs(now time.Time) []*jobs.Job {
 
 // linger is how long a finished job's card stays.
 func (g *Game) linger(j *jobs.Job) time.Duration {
-	if j.Status != "" || j.Killed || g.watches[j] != nil && g.watches[j].failing {
+	w := g.watches[j]
+	switch {
+	case j.Status != "" || j.Killed || w != nil && w.failing:
 		return stripLingerFail
+	case w != nil && w.grouped:
+		return stripLingerGrouped // out of view, it needn't wait to be seen
 	}
 	return stripLingerOK
 }

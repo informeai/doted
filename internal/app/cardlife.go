@@ -35,13 +35,26 @@ const (
 )
 
 // groupCard is where the group card was drawn, as it slides, and what it
-// held last, to draw it as it leaves.
+// held last, to draw it as it leaves and to notice what changed.
 type groupCard struct {
 	x, w   float64
 	placed bool
 	n      int
 	dots   []color.RGBA
+
+	ids      []int        // the grouped jobs' numbers last frame
+	running  map[int]bool // which of them were running
+	label    pathRoll     // "+3" rolling to "+2"
+	bumpAt   time.Time    // when the pile last hopped
+	flashAt  time.Time    // when its border last lit up
+	flashClr color.RGBA
 }
+
+const (
+	groupBump   = 350 * time.Millisecond
+	groupFlash  = 900 * time.Millisecond
+	promoteGlow = 700 * time.Millisecond // a card out of the group glows this long
+)
 
 // cardPhase is how far job j's card has folded into its pill and how far
 // it has left, both from 0 to 1.
@@ -239,6 +252,22 @@ func (g *Game) stripLayout(cards []*jobs.Job, width float64, now time.Time) (slo
 	return slots, x, overflow
 }
 
+// placeCard puts a card that just showed where it starts moving from: the
+// group card's pile when it comes out of it, else its slot, at x, from
+// nothing, to grow to width w.
+func (g *Game) placeCard(j *jobs.Job, wt *jobWatch, x, w float64, now time.Time) {
+	switch {
+	case !g.cfg.Animation.Enabled:
+		wt.x, wt.w = x, w
+	case g.stripGroup.placed && slices.Contains(g.stripGroup.ids, j.ID):
+		// Out of the group: it slides from the pile into its slot.
+		wt.x, wt.w, wt.placed = g.stripGroup.x, g.stripGroup.w, true
+		wt.promotedAt = now
+	default:
+		wt.x, wt.w, wt.placed = x, 0, true
+	}
+}
+
 // stripArrowW is the room each scroll arrow takes when the strip scrolls.
 func stripArrowW(f *faceSet) float64 { return 5 * f.cellW }
 
@@ -309,11 +338,7 @@ func (g *Game) drawStrip(dst *ebiten.Image, left, right, y float64, now time.Tim
 		wt := g.watchOf(s.job)
 		target := origin + s.x
 		if !wt.placed {
-			// A new card grows into its slot from nothing.
-			wt.x, wt.w, wt.placed = target, 0, g.cfg.Animation.Enabled
-			if !g.cfg.Animation.Enabled {
-				wt.w = s.w
-			}
+			g.placeCard(s.job, wt, target, s.w, now)
 		}
 		wt.x += (target - wt.x) * k
 		wt.w += (s.w - wt.w) * k
@@ -331,8 +356,10 @@ func (g *Game) drawStrip(dst *ebiten.Image, left, right, y float64, now time.Tim
 		g.drawStripArrow(dst, right-arrow, y, arrow, 1, hidden[1])
 	}
 	for _, j := range g.stripJobs(now) {
+		w := g.watchOf(j)
+		w.grouped = !open && slices.Contains(grouped, j)
 		if !slices.Contains(cards, j) {
-			g.watchOf(j).placed = false // it grows into place when it shows again
+			w.placed = false // it grows into place when it shows again
 		}
 	}
 	g.drawGroup(dst, grouped, groupX, y, groupW, k, open, now)
@@ -352,6 +379,7 @@ func (g *Game) groupWidth(n int) float64 {
 // click, opens it; a click on it open closes it.
 func (g *Game) drawGroup(dst *ebiten.Image, grouped []*jobs.Job, x, y, w, k float64, open bool, now time.Time) {
 	gs := &g.stripGroup
+	g.noticeGroupChanges(grouped, open, now)
 	if len(grouped) == 0 {
 		gs.w += (0 - gs.w) * k
 		if gs.w < 1 {
@@ -382,41 +410,59 @@ func (g *Game) drawGroup(dst *ebiten.Image, grouped []*jobs.Job, x, y, w, k floa
 	if hover {
 		lift, gy = 1, y-1.5*g.scale
 	}
+	// When it changes, the pile hops.
+	gx, gw, gh := gs.x, gs.w, h
+	if p := float64(now.Sub(gs.bumpAt)) / float64(groupBump); !gs.bumpAt.IsZero() && p < 1 && g.cfg.Animation.Enabled {
+		grow := 0.08 * math.Sin(math.Pi*p)
+		gx, gw = gx-gw*grow/2, gw*(1+grow)
+		gy, gh = gy-gh*grow/2, gh*(1+grow)
+	}
+	h = gh
 	r := math.Min(f.lineH/3, h/2)
 	surface := mixRGBA(g.theme.Background, g.theme.Border, 0.55+0.25*lift)
 	edge := mixRGBA(g.theme.Border, g.theme.Foreground, 0.12)
 	// A pile: two cards peek out behind the front one.
 	for i := 2; i >= 1; i-- {
 		off := float64(i) * 3 * g.scale
-		fillRoundRect(dst, gs.x+off, gy+off, gs.w-off, h-off, r, scaleAlpha(mixRGBA(g.theme.Background, g.theme.Border, 0.35), 1))
-		drawTrace(dst, cardPerimeter(gs.x+off, gy+off, gs.w-off, h-off, r), 1, math.Max(1, g.scale), 0.6, edge)
+		fillRoundRect(dst, gx+off, gy+off, gw-off, h-off, r, scaleAlpha(mixRGBA(g.theme.Background, g.theme.Border, 0.35), 1))
+		drawTrace(dst, cardPerimeter(gx+off, gy+off, gw-off, h-off, r), 1, math.Max(1, g.scale), 0.6, edge)
 	}
-	fw, fh := gs.w-6*g.scale, h-6*g.scale
-	drawCardShadow(dst, gs.x, gy, fw, fh, r, g.scale, lift, 1)
-	fillRoundRect(dst, gs.x, gy, fw, fh, r, surface)
-	drawTrace(dst, cardPerimeter(gs.x, gy, fw, fh, r), 1, math.Max(1, g.scale), 1, edge)
+	fw, fh := gw-6*g.scale, h-6*g.scale
+	drawCardShadow(dst, gx, gy, fw, fh, r, g.scale, lift, 1)
+	fillRoundRect(dst, gx, gy, fw, fh, r, surface)
+	drawTrace(dst, cardPerimeter(gx, gy, fw, fh, r), 1, math.Max(1, g.scale), 1, edge)
 
-	clip := dst.SubImage(image.Rect(int(gs.x), int(gy), int(math.Ceil(gs.x+fw)), int(math.Ceil(gy+fh)))).(*ebiten.Image)
+	clip := dst.SubImage(image.Rect(int(gx), int(gy), int(math.Ceil(gx+fw)), int(math.Ceil(gy+fh)))).(*ebiten.Image)
+	// The count rolls when it changes.
 	label := fmt.Sprintf("+%d", gs.n)
-	g.drawText(clip, label, gs.x+(fw-float64(len(label))*f.cellW)/2, gy+f.lineH/4, g.theme.Foreground, 1)
+	roll := gs.label
+	if string(roll.to) != label {
+		roll = pathRoll{from: []rune(label), to: []rune(label)}
+	}
+	lw := max(len(roll.from), len(roll.to))
+	g.drawRoll(clip, roll, gx+(fw-float64(lw)*f.cellW)/2, gy+f.lineH/4, lw, g.theme.Foreground, 1, now)
 	// A dot per job, in its state's color.
 	n := min(len(gs.dots), maxGroupDots)
 	dotsW := float64(n) * f.cellW * 0.8
 	for i, clr := range gs.dots[:n] {
-		cx := gs.x + (fw-dotsW)/2 + (float64(i)+0.5)*f.cellW*0.8
+		cx := gx + (fw-dotsW)/2 + (float64(i)+0.5)*f.cellW*0.8
 		vector.FillCircle(clip, float32(cx), float32(gy+f.lineH*1.75), float32(f.cellW*0.18), clr, true)
+	}
+	// A job finishing in the group, or leaving it, lights its border up.
+	if p := float64(now.Sub(gs.flashAt)) / float64(groupFlash); !gs.flashAt.IsZero() && p < 1 && g.cfg.Animation.Enabled {
+		drawTrace(dst, cardPerimeter(gx, gy, fw, fh, r), 1, 2.5*g.scale, 1-p, gs.flashClr)
 	}
 	// Selected, it's outlined in the accent color; open, fainter, and it
 	// points back with an arrow.
 	switch {
 	case g.groupSel:
-		strokeRoundRect(dst, gs.x-2*g.scale, gy-2*g.scale, fw+4*g.scale, fh+4*g.scale, r+2*g.scale, 3*g.scale, scaleAlpha(g.theme.Accent, 0.3))
-		strokeRoundRect(dst, gs.x, gy, fw, fh, r, 2*g.scale, g.theme.Accent)
+		strokeRoundRect(dst, gx-2*g.scale, gy-2*g.scale, fw+4*g.scale, fh+4*g.scale, r+2*g.scale, 3*g.scale, scaleAlpha(g.theme.Accent, 0.3))
+		strokeRoundRect(dst, gx, gy, fw, fh, r, 2*g.scale, g.theme.Accent)
 	case open:
-		strokeRoundRect(dst, gs.x, gy, fw, fh, r, 1.5*g.scale, scaleAlpha(g.theme.Accent, 0.5))
+		strokeRoundRect(dst, gx, gy, fw, fh, r, 1.5*g.scale, scaleAlpha(g.theme.Accent, 0.5))
 	}
 	if open {
-		g.drawText(clip, "‹", gs.x+f.cellW*0.4, gy+f.lineH/4, g.theme.Accent, 1)
+		g.drawText(clip, "‹", gx+f.cellW*0.4, gy+f.lineH/4, g.theme.Accent, 1)
 	}
 	if len(grouped) > 0 {
 		g.stripHits = append(g.stripHits, stripHit{x0: gs.x, y0: y, x1: gs.x + gs.w, y1: y + h, group: true})
@@ -497,6 +543,10 @@ func (g *Game) drawCard(dst *ebiten.Image, j *jobs.Job, x, y, w, h, contentW, sm
 		strokeRoundRect(dst, x-2*g.scale, y-2*g.scale, w+4*g.scale, h+4*g.scale, r+2*g.scale, 3*g.scale, scaleAlpha(g.theme.Accent, alpha*0.3))
 		strokeRoundRect(dst, x, y, w, h, r, 2*g.scale, scaleAlpha(g.theme.Accent, alpha))
 	}
+	// Just out of the group, it glows for a moment.
+	if p := float64(now.Sub(wt.promotedAt)) / float64(promoteGlow); !wt.promotedAt.IsZero() && p < 1 && g.cfg.Animation.Enabled {
+		strokeRoundRect(dst, x, y, w, h, r, 2*g.scale, scaleAlpha(g.theme.Accent, alpha*(1-p)))
+	}
 
 	// What's inside is cut to the card as it shrinks: the whole card's
 	// content fades out while the small one's fades in.
@@ -567,4 +617,44 @@ func (g *Game) drawMini(dst *ebiten.Image, j *jobs.Job, x, y, h float64, state c
 	id := fmt.Sprintf("#%d ", j.ID)
 	g.drawText(dst, id, tx, ty, g.theme.Muted, alpha)
 	g.drawText(dst, label[len(id):], tx+float64(utf8.RuneCountInString(id))*f.cellW, ty, g.theme.Foreground, alpha*0.8)
+}
+
+// noticeGroupChanges compares the grouped jobs with last frame's: a job
+// that finished in the group lights it up in its result's color and says
+// so on the status line; one that left it (it ended, or moved up into
+// view) makes the pile hop and the count roll.
+func (g *Game) noticeGroupChanges(grouped []*jobs.Job, open bool, now time.Time) {
+	gs := &g.stripGroup
+	ids := make([]int, 0, len(grouped))
+	running := map[int]bool{}
+	for _, j := range grouped {
+		ids = append(ids, j.ID)
+		running[j.ID] = j.Running()
+		if gs.running[j.ID] && !j.Running() && !open { // open, its card says it
+			gs.flashAt, gs.flashClr = now, g.jobColor(j)
+			g.flash(g.groupEndNotice(j))
+		}
+	}
+	if gs.placed && len(ids) != len(gs.ids) {
+		gs.label = newPathRoll([]rune(fmt.Sprintf("+%d", len(gs.ids))), []rune(fmt.Sprintf("+%d", len(ids))), now)
+		gs.bumpAt = now
+		for _, id := range gs.ids {
+			if !slices.Contains(ids, id) && g.stripJob(id) != nil && g.stripJob(id).Running() {
+				gs.flashAt, gs.flashClr = now, g.theme.Accent // it moved up into view
+			}
+		}
+	}
+	gs.ids, gs.running = ids, running
+}
+
+// groupEndNotice is the status line's word on a grouped job that ended.
+func (g *Game) groupEndNotice(j *jobs.Job) string {
+	name := g.watchOf(j).name
+	switch {
+	case j.Killed:
+		return fmt.Sprintf("#%d %s was killed", j.ID, name)
+	case j.Status != "":
+		return fmt.Sprintf("#%d %s failed (%s) · alt+%d to see it", j.ID, name, shortStatus(j.Status), j.ID)
+	}
+	return fmt.Sprintf("#%d %s finished in %s", j.ID, name, formatDuration(j.Elapsed(j.Ended)))
 }

@@ -13,7 +13,7 @@ import (
 // The git part of the status line: the Git logo in the text color and the
 // branch name in white, followed by what changed, each
 // kind in its color: ~modified +added -deleted ?untracked !conflicts, and
-// ↑ahead ↓behind of the upstream.
+// ↑ahead (accent) ↓behind (cyan) of the upstream.
 
 var badgeText = color.RGBA{0xff, 0xff, 0xff, 0xff}
 
@@ -36,8 +36,8 @@ func (g *Game) gitMarks(info projectContext) []gitMark {
 	add(c.added, "+", g.theme.ANSI[2])
 	add(c.deleted, "-", g.theme.ANSI[1])
 	add(c.untracked, "?", g.theme.Muted)
-	add(info.ahead, "↑", g.theme.Muted)
-	add(info.behind, "↓", g.theme.Muted)
+	add(info.ahead, "↑", g.theme.Accent)   // commits to push: something to do
+	add(info.behind, "↓", g.theme.ANSI[6]) // commits to pull, in cyan
 	return marks
 }
 

@@ -136,3 +136,67 @@ func TestSelectedCardShowsMoreLines(t *testing.T) {
 		t.Fatalf("the selected card shows %d lines, want %d", g.stripLines(time.Now()), selectedLines)
 	}
 }
+
+func TestGroupNoticesChanges(t *testing.T) {
+	g := newTestGame(t)
+	g.cfg.Animation.Enabled = true
+	for range 4 {
+		run(g, "sleep 30 &")
+	}
+	run(g, "sleep 30 &")
+	run(g, "read x &") // #6, to end in the group
+	run(g, "sleep 30 &")
+	now := time.Now()
+	_, grouped, _ := g.stripGroups(now)
+	g.stripGroup.placed = true
+	g.noticeGroupChanges(grouped, false, now)
+	if !slices.Equal(g.stripGroup.ids, []int{5, 6, 7}) {
+		t.Fatalf("ids = %v", g.stripGroup.ids)
+	}
+
+	// #6 ends in the group: the group lights up and the status line says so.
+	j := g.stripJob(6)
+	j.Write([]byte("\r"))
+	tickUntil(t, g, func() bool { return !j.Running() })
+	g.watchOf(j).grouped = true
+	_, grouped, _ = g.stripGroups(time.Now())
+	g.noticeGroupChanges(grouped, false, time.Now())
+	if g.stripGroup.flashAt.IsZero() || g.stripGroup.flashClr != g.theme.ANSI[2] || !strings.HasPrefix(g.flashText, "#6 read x finished in") {
+		t.Fatalf("flash %v %v, status %q", g.stripGroup.flashAt, g.stripGroup.flashClr, g.flashText)
+	}
+	// A job that ended in the group, out of view, leaves sooner.
+	if g.linger(j) != stripLingerGrouped {
+		t.Fatalf("linger = %v", g.linger(j))
+	}
+
+	// Once it's gone, the count rolls from +3 to +2 and the pile hops.
+	after := j.Ended.Add(stripLingerGrouped)
+	_, grouped, _ = g.stripGroups(after)
+	g.noticeGroupChanges(grouped, false, after)
+	if len(grouped) != 2 || string(g.stripGroup.label.from) != "+3" || string(g.stripGroup.label.to) != "+2" || !g.stripGroup.bumpAt.Equal(after) {
+		t.Fatalf("grouped %d, label %q → %q", len(grouped), string(g.stripGroup.label.from), string(g.stripGroup.label.to))
+	}
+}
+
+func TestPromotedCardComesFromThePile(t *testing.T) {
+	g := newTestGame(t)
+	g.cfg.Animation.Enabled = true
+	for range 5 {
+		run(g, "sleep 30 &")
+	}
+	now := time.Now()
+	g.stripGroup = groupCard{x: 900, w: 60, placed: true, ids: []int{5}}
+
+	// #5 was in the group: it starts from the pile and glows.
+	w5 := g.watchOf(g.stripJob(5))
+	g.placeCard(g.stripJob(5), w5, 600, 300, now)
+	if w5.x != 900 || w5.w != 60 || !w5.promotedAt.Equal(now) {
+		t.Fatalf("#5 starts at %.0f, %.0f wide, promoted %v", w5.x, w5.w, w5.promotedAt)
+	}
+	// A card new to the strip grows in its own slot.
+	w1 := g.watchOf(g.stripJob(1))
+	g.placeCard(g.stripJob(1), w1, 0, 300, now)
+	if w1.x != 0 || w1.w != 0 || !w1.promotedAt.IsZero() {
+		t.Fatalf("#1 starts at %.0f, %.0f wide", w1.x, w1.w)
+	}
+}

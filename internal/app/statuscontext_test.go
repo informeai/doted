@@ -43,6 +43,11 @@ func TestGitMarks(t *testing.T) {
 	if strings.Join(got, " ") != "~3 ?2 ↑1" {
 		t.Fatalf("marks = %q", got)
 	}
+	// Commits to push stand out in the accent color, and to pull in cyan.
+	marks := g.gitMarks(projectContext{ahead: 1, behind: 2})
+	if marks[0].clr != g.theme.Accent || marks[1].clr != g.theme.ANSI[6] {
+		t.Fatalf("ahead/behind colors = %v %v", marks[0].clr, marks[1].clr)
+	}
 }
 
 func TestProbeContext(t *testing.T) {

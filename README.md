@@ -101,7 +101,7 @@ Segurando **Cmd** (Ctrl no Linux e Windows), URLs e caminhos de arquivos que exi
 
 ### Barra de status e notificações
 
-Depois do diretório, a barra de status mostra o contexto do projeto. Primeiro vem o branch do git: o logo do Git, na cor do texto do tema (`foreground`), e o nome do branch em branco. Ao lado, o que mudou no repositório, cada tipo na sua cor: `~2` alterados (amarelo), `+1` adicionados (verde), `-1` removidos (vermelho), `?2` não rastreados, `!1` em conflito e `↑1`/`↓2` commits à frente/atrás do remoto. Depois, quanto tempo o último comando levou (`last 1.2s`). Se o caminho for longo, ele encurta para dar lugar ao contexto.
+Depois do diretório, a barra de status mostra o contexto do projeto. Primeiro vem o branch do git: o logo do Git, na cor do texto do tema (`foreground`), e o nome do branch em branco. Ao lado, o que mudou no repositório, cada tipo na sua cor: `~2` alterados (amarelo), `+1` adicionados (verde), `-1` removidos (vermelho), `?2` não rastreados, `!1` em conflito, `↑1` commits para enviar (na cor de destaque) e `↓2` commits para puxar (ciano). Depois, quanto tempo o último comando levou (`last 1.2s`). Se o caminho for longo, ele encurta para dar lugar ao contexto.
 
 Quando o branch muda, o nome rola como o caminho no `cd` (só as letras que mudaram) enquanto o logo dá um quarto de volta. Num branch que ainda não tinha aparecido na sessão, como um recém-criado com `git switch -c`, o logo também solta faíscas. Ao entrar ou sair de um repositório, o logo, o nome e as mudanças aparecem ou somem com um fade. Com `[animation] enabled = false`, o branch só troca, e `particles = false` desliga as faíscas.
 
@@ -143,6 +143,8 @@ Os cartões leem a saída enquanto ela chega:
 Clicar num cartão, ou Ctrl+1 a Ctrl+9, abre a visão completa do job. O número do atalho é o número do job (o `#3` do cartão, o mesmo do `fg 3`), não a posição na tela, então funciona mesmo com o cartão fora de vista.
 
 Para não poluir a tela, a faixa mostra no máximo 4 cartões, sempre os dos primeiros jobs. Os jobs seguintes ficam agrupados num cartão à direita, desenhado como uma pilha, com `+3` e uma bolinha por job na cor do estado (rodando, com erro, concluído). Ao selecionar o grupo (com Alt+→ depois do quarto cartão ou com um clique), ele se abre: os jobs agrupados ocupam a faixa, e o grupo vai para a esquerda como cabeçalho (`‹ +3`). A seleção segue por eles com ←/→ (Enter no grupo leva ao primeiro). Esc, um clique no grupo aberto ou voltar com Alt+← para antes do grupo o fecham, e a faixa volta a mostrar os 4 cartões e o grupo. Alt+número e Ctrl+número de um job agrupado também abrem o grupo nele. O limite muda em `[jobs] strip_cards`.
+
+O grupo acompanha o que acontece com os jobs dele. Quando um cartão fixo sai, o próximo job do grupo sai da pilha e desliza até a vaga, com um brilho na cor de destaque. Quando um job agrupado termina, o grupo pisca na cor do resultado e a barra de status avisa (`#6 migrate finished in 1.0s` ou `#6 test failed (exit 1) · alt+6 to see it`). Um job agrupado que terminou bem sai depois de 2,5 segundos, já que o cartão dele não está à vista; um que falhou continua 20 segundos, para dar tempo de ir até ele. Sempre que a quantidade muda, o número rola (`+3` → `+2`) e a pilha dá um pequeno pulo.
 
 Cada cartão mostra as 3 últimas linhas da saída (`[jobs] strip_lines`); o cartão selecionado mostra as 5 últimas, e para ver tudo basta abrir o job (Enter ou clique).
 
