@@ -63,10 +63,17 @@ func TestStripLayout(t *testing.T) {
 		t.Fatalf("three cards should share the strip: overflow %v, total %.0f of %.0f", overflow, total, width)
 	}
 
-	// Too narrow for all: it scrolls, and nothing is left out.
-	slots, total, overflow = g.stripLayout(cards, 70*g.faces.cellW, now)
-	if !overflow || len(slots) != 3 || total <= 70*g.faces.cellW {
-		t.Fatalf("narrow: overflow %v, %d slots, total %.0f", overflow, len(slots), total)
+	// Short of room, cards narrow down to fit before anything scrolls.
+	narrow := 70 * g.faces.cellW
+	slots, total, overflow = g.stripLayout(cards, narrow, now)
+	if overflow || math.Abs(total-narrow) > 0.5 || slots[0].w >= float64(stripMinCols)*g.faces.cellW {
+		t.Fatalf("narrow: overflow %v, total %.0f of %.0f, first %.0f wide", overflow, total, narrow, slots[0].w)
+	}
+
+	// Too narrow even for that: it scrolls, and nothing is left out.
+	slots, total, overflow = g.stripLayout(cards, 40*g.faces.cellW, now)
+	if !overflow || len(slots) != 3 || total <= 40*g.faces.cellW {
+		t.Fatalf("very narrow: overflow %v, %d slots, total %.0f", overflow, len(slots), total)
 	}
 }
 

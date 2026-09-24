@@ -599,7 +599,7 @@ func (g *Game) statusHint(now time.Time) (hint string, spinner bool) {
 	switch {
 	case g.flashText != "" && now.Before(g.flashUntil):
 		hint = g.flashText
-	case g.stripSel != nil:
+	case g.stripSel != nil || g.groupSel:
 		hint = g.selectionHint()
 	case g.target != nil:
 		hint, spinner = "sending to "+g.watchOf(g.target).name+" · esc returns to the shell", true

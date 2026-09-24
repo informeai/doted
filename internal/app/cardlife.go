@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -25,11 +26,22 @@ import (
 // the gap.
 
 const (
-	collapseAfter = 1500 * time.Millisecond // the whole card stays this long after the job ends
-	collapseTime  = 350 * time.Millisecond  // folding into the pill
-	exitTime      = 300 * time.Millisecond  // sliding out at the end
-	slideRate     = 14.0                    // how fast cards move to their places, per second
+	collapseAfter   = 1500 * time.Millisecond // the whole card stays this long after the job ends
+	collapseTime    = 350 * time.Millisecond  // folding into the pill
+	exitTime        = 300 * time.Millisecond  // sliding out at the end
+	slideRate       = 14.0                    // how fast cards move to their places, per second
+	stripNarrowCols = 18                      // cards narrow down to this before the strip scrolls
+	maxGroupDots    = 8                       // dots the group card shows
 )
+
+// groupCard is where the group card was drawn, as it slides, and what it
+// held last, to draw it as it leaves.
+type groupCard struct {
+	x, w   float64
+	placed bool
+	n      int
+	dots   []color.RGBA
+}
 
 // cardPhase is how far job j's card has folded into its pill and how far
 // it has left, both from 0 to 1.
@@ -118,7 +130,8 @@ func (g *Game) stripHeight(now time.Time) float64 {
 		return 0
 	}
 	h := 0.0
-	for _, j := range g.stripJobs(now) {
+	shown, _, _ := g.stripGroups(now)
+	for _, j := range shown {
 		_, e := g.cardPhase(j, now)
 		h = math.Max(h, g.cardHeight(j, now)*(1-e)) // a leaving card gives its room back
 	}
@@ -171,7 +184,22 @@ func (g *Game) stripLayout(cards []*jobs.Job, width float64, now time.Time) (slo
 			w.miniTarget = 1
 		}
 	}
-	overflow = sum(func(j *jobs.Job) float64 { return math.Max(ended(j), g.watchOf(j).miniTarget) }) > width
+	target := func(j *jobs.Job) float64 { return math.Max(ended(j), g.watchOf(j).miniTarget) }
+	// Still too wide: whole cards narrow down to fit, as far as they stay
+	// readable, before the strip scrolls.
+	if sum(target) > width {
+		whole, rest := 0.0, -gap
+		for _, j := range cards {
+			_, e := g.cardPhase(j, now)
+			sw, _ := g.smallSize(j, now)
+			whole += (1 - target(j)) * (1 - e)
+			rest += (target(j)*sw + gap) * (1 - e)
+		}
+		if whole > 0 {
+			minFull = math.Max(float64(stripNarrowCols)*f.cellW, (width-rest)/whole)
+		}
+	}
+	overflow = sum(target) > width+0.5
 
 	fullW := minFull
 	if overflow {
@@ -219,7 +247,7 @@ func stripArrowW(f *faceSet) float64 { return 5 * f.cellW }
 // they don't all fit.
 func (g *Game) drawStrip(dst *ebiten.Image, left, right, y float64, now time.Time) {
 	g.stripHits = g.stripHits[:0]
-	cards := g.stripJobs(now)
+	cards, grouped, open := g.stripGroups(now)
 	dt := math.Min(0.1, now.Sub(g.stripDrawn).Seconds())
 	g.stripDrawn = now
 	if len(cards) == 0 {
@@ -234,6 +262,19 @@ func (g *Game) drawStrip(dst *ebiten.Image, left, right, y float64, now time.Tim
 	for _, j := range cards {
 		w := g.watchOf(j)
 		w.mini += (w.miniTarget - w.mini) * k
+	}
+	// Jobs past the first ones wait in a group card on the right; while
+	// it's open, its jobs show and it leads them on the left.
+	groupW, groupX := 0.0, right
+	if len(grouped) > 0 {
+		groupW = g.groupWidth(len(grouped))
+		gap := groupW + float64(stripGapCols)*f.cellW
+		if open {
+			groupX, left = left, left+gap
+		} else {
+			right -= gap
+			groupX = right + float64(stripGapCols)*f.cellW
+		}
 	}
 	slots, total, overflow := g.stripLayout(cards, right-left, now)
 
@@ -288,6 +329,97 @@ func (g *Game) drawStrip(dst *ebiten.Image, left, right, y float64, now time.Tim
 	if overflow {
 		g.drawStripArrow(dst, left, y, arrow, -1, hidden[0])
 		g.drawStripArrow(dst, right-arrow, y, arrow, 1, hidden[1])
+	}
+	for _, j := range g.stripJobs(now) {
+		if !slices.Contains(cards, j) {
+			g.watchOf(j).placed = false // it grows into place when it shows again
+		}
+	}
+	g.drawGroup(dst, grouped, groupX, y, groupW, k, open, now)
+}
+
+// groupWidth is the width of the card grouping n jobs: room for "+n" and
+// a dot for each, up to a few.
+func (g *Game) groupWidth(n int) float64 {
+	f := g.faces
+	label := utf8.RuneCountInString(fmt.Sprintf("+%d", n))
+	return f.cellW * float64(max(label, min(n, maxGroupDots))+3)
+}
+
+// drawGroup draws the card grouping the jobs past the first ones, as a
+// pile, at (x, y) of width w, sliding in and out as it comes and goes: how
+// many there are and a dot in each one's state color. Selecting it, or a
+// click, opens it; a click on it open closes it.
+func (g *Game) drawGroup(dst *ebiten.Image, grouped []*jobs.Job, x, y, w, k float64, open bool, now time.Time) {
+	gs := &g.stripGroup
+	if len(grouped) == 0 {
+		gs.w += (0 - gs.w) * k
+		if gs.w < 1 {
+			gs.w, gs.placed = 0, false
+			return
+		}
+	} else {
+		if !gs.placed {
+			gs.x, gs.w, gs.placed = x, 0, true
+		}
+		gs.n = len(grouped)
+		gs.dots = gs.dots[:0]
+		for _, j := range grouped {
+			gs.dots = append(gs.dots, g.jobColor(j))
+		}
+		gs.x += (x - gs.x) * k
+		gs.w += (w - gs.w) * k
+	}
+	f := g.faces
+	h := g.stripHeight(now)
+	if gs.w < 2 || h < 1 {
+		return
+	}
+	mx, my := ebiten.CursorPosition()
+	hover := len(grouped) > 0 && float64(mx) >= gs.x && float64(mx) < gs.x+gs.w && float64(my) >= y && float64(my) < y+h
+	lift := 0.0
+	gy := y
+	if hover {
+		lift, gy = 1, y-1.5*g.scale
+	}
+	r := math.Min(f.lineH/3, h/2)
+	surface := mixRGBA(g.theme.Background, g.theme.Border, 0.55+0.25*lift)
+	edge := mixRGBA(g.theme.Border, g.theme.Foreground, 0.12)
+	// A pile: two cards peek out behind the front one.
+	for i := 2; i >= 1; i-- {
+		off := float64(i) * 3 * g.scale
+		fillRoundRect(dst, gs.x+off, gy+off, gs.w-off, h-off, r, scaleAlpha(mixRGBA(g.theme.Background, g.theme.Border, 0.35), 1))
+		drawTrace(dst, cardPerimeter(gs.x+off, gy+off, gs.w-off, h-off, r), 1, math.Max(1, g.scale), 0.6, edge)
+	}
+	fw, fh := gs.w-6*g.scale, h-6*g.scale
+	drawCardShadow(dst, gs.x, gy, fw, fh, r, g.scale, lift, 1)
+	fillRoundRect(dst, gs.x, gy, fw, fh, r, surface)
+	drawTrace(dst, cardPerimeter(gs.x, gy, fw, fh, r), 1, math.Max(1, g.scale), 1, edge)
+
+	clip := dst.SubImage(image.Rect(int(gs.x), int(gy), int(math.Ceil(gs.x+fw)), int(math.Ceil(gy+fh)))).(*ebiten.Image)
+	label := fmt.Sprintf("+%d", gs.n)
+	g.drawText(clip, label, gs.x+(fw-float64(len(label))*f.cellW)/2, gy+f.lineH/4, g.theme.Foreground, 1)
+	// A dot per job, in its state's color.
+	n := min(len(gs.dots), maxGroupDots)
+	dotsW := float64(n) * f.cellW * 0.8
+	for i, clr := range gs.dots[:n] {
+		cx := gs.x + (fw-dotsW)/2 + (float64(i)+0.5)*f.cellW*0.8
+		vector.FillCircle(clip, float32(cx), float32(gy+f.lineH*1.75), float32(f.cellW*0.18), clr, true)
+	}
+	// Selected, it's outlined in the accent color; open, fainter, and it
+	// points back with an arrow.
+	switch {
+	case g.groupSel:
+		strokeRoundRect(dst, gs.x-2*g.scale, gy-2*g.scale, fw+4*g.scale, fh+4*g.scale, r+2*g.scale, 3*g.scale, scaleAlpha(g.theme.Accent, 0.3))
+		strokeRoundRect(dst, gs.x, gy, fw, fh, r, 2*g.scale, g.theme.Accent)
+	case open:
+		strokeRoundRect(dst, gs.x, gy, fw, fh, r, 1.5*g.scale, scaleAlpha(g.theme.Accent, 0.5))
+	}
+	if open {
+		g.drawText(clip, "‹", gs.x+f.cellW*0.4, gy+f.lineH/4, g.theme.Accent, 1)
+	}
+	if len(grouped) > 0 {
+		g.stripHits = append(g.stripHits, stripHit{x0: gs.x, y0: y, x1: gs.x + gs.w, y1: y + h, group: true})
 	}
 }
 

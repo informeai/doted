@@ -150,12 +150,16 @@ func (g *Game) linger(j *jobs.Job) time.Duration {
 // stripLines is how many lines of output the strip's cards have room for:
 // more while one of them is being sent to.
 func (g *Game) stripLines(now time.Time) int {
+	n := g.cfg.Jobs.StripLines
 	for _, j := range g.stripJobs(now) {
-		if j == g.target {
-			return max(g.cfg.Jobs.StripLines, targetLines)
+		switch j {
+		case g.target:
+			n = max(n, targetLines)
+		case g.stripSel:
+			n = max(n, selectedLines)
 		}
 	}
-	return g.cfg.Jobs.StripLines
+	return n
 }
 
 // stripHit is a clickable spot of the strip in the last frame.
@@ -165,6 +169,7 @@ type stripHit struct {
 	url            string    // opens it instead, when set
 	action         string    // or does this to it: restart, stop, send
 	scroll         int       // or scrolls the strip that way (a scroll arrow)
+	group          bool      // or opens the group card, or closes it when open
 }
 
 func (g *Game) stripHitAt(x, y float64) (stripHit, bool) {
@@ -204,6 +209,10 @@ func (g *Game) handleStripMouse(x, y float64) bool {
 		return true
 	}
 	switch {
+	case h.group && (g.groupSel || g.stripSel != nil && !g.inFirstCards(g.stripSel)):
+		g.clearSelection() // a click on the open group closes it
+	case h.group:
+		g.stripSel, g.groupSel = nil, true
 	case h.scroll != 0:
 		g.scrollStrip(h.scroll)
 	case h.url != "":
@@ -401,8 +410,11 @@ func (g *Game) drawCardContent(dst *ebiten.Image, j *jobs.Job, wt *jobWatch, x, 
 
 	// The last lines, errors in red.
 	shown := g.cfg.Jobs.StripLines
-	if j == g.target {
-		shown = g.stripLines(now) // the one being sent to shows more
+	switch j {
+	case g.target:
+		shown = max(shown, targetLines) // the one being sent to shows more
+	case g.stripSel:
+		shown = max(shown, selectedLines) // and so does the selected one
 	}
 	for i, line := range j.Tail(shown) {
 		clr, a := g.theme.Foreground, alpha*0.7

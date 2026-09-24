@@ -98,11 +98,13 @@ type Game struct {
 	stripHits                  []stripHit                  // the strip's clickable spots in the last frame
 	stripDrawn                 time.Time                   // when the strip was last drawn, to move cards smoothly
 	stripSel                   *jobs.Job                   // the card selected from the keyboard; see stripnav.go
+	groupSel                   bool                        // the group card is selected, and so open
 	stripScroll                float64                     // how far the strip is scrolled, moving towards stripScrollTo
 	stripScrollTo              float64                     //
 	stripMaxScroll             float64                     // how far it can scroll, as of the last frame
 	stripScrolledAway          bool                        // scrolled off the newest cards by hand
 	wheelTaken                 bool                        // the strip used this tick's mouse wheel
+	stripGroup                 groupCard                   // the card grouping the jobs past the first ones
 	target                     *jobs.Job                   // the job the input line sends to; see jobcontrol.go
 	targetRaw                  bool                        // it reads a key at a time
 	stash                      string                      // the shell line put aside meanwhile

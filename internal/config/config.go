@@ -54,6 +54,9 @@ type Jobs struct {
 	Strip bool `toml:"strip"`
 	// StripLines is how many of a job's last lines its card shows.
 	StripLines int `toml:"strip_lines"`
+	// StripCards is how many cards show; the jobs after them are grouped
+	// in one card, and show when navigated to.
+	StripCards int `toml:"strip_cards"`
 }
 
 type Notify struct {
@@ -255,6 +258,7 @@ func (c Config) validate() error {
 	check(c.Scrollback.Lines >= 100, "scrollback.lines must be at least 100")
 	check(c.History.Lines >= 100, "history.lines must be at least 100")
 	check(c.Jobs.StripLines >= 1 && c.Jobs.StripLines <= 10, "jobs.strip_lines must be between 1 and 10")
+	check(c.Jobs.StripCards >= 1 && c.Jobs.StripCards <= 9, "jobs.strip_cards must be between 1 and 9")
 	return errors.Join(errs...)
 }
 

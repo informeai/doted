@@ -142,7 +142,11 @@ Os cartões leem a saída enquanto ela chega:
 
 Clicar num cartão, ou Ctrl+1 a Ctrl+9, abre a visão completa do job. O número do atalho é o número do job (o `#3` do cartão, o mesmo do `fg 3`), não a posição na tela, então funciona mesmo com o cartão fora de vista.
 
-Quando os cartões não cabem, a faixa primeiro recolhe os jobs quietos (sem saída há mais de 10 segundos) em cartões de uma linha, como `● #2 worker · 12m`; os que estão ativos, com erro, selecionados ou recebendo o teclado continuam inteiros. Se ainda assim não couber, a faixa vira um carrossel: setas nas pontas mostram quantos cartões estão fora de vista de cada lado (`‹ 2`, `3 ›`), e clicar nelas ou usar a roda do mouse sobre a faixa rola, com animação. Sem interferência, a faixa fica nos cartões mais novos.
+Para não poluir a tela, a faixa mostra no máximo 4 cartões, sempre os dos primeiros jobs. Os jobs seguintes ficam agrupados num cartão à direita, desenhado como uma pilha, com `+3` e uma bolinha por job na cor do estado (rodando, com erro, concluído). Ao selecionar o grupo (com Alt+→ depois do quarto cartão ou com um clique), ele se abre: os jobs agrupados ocupam a faixa, e o grupo vai para a esquerda como cabeçalho (`‹ +3`). A seleção segue por eles com ←/→ (Enter no grupo leva ao primeiro). Esc, um clique no grupo aberto ou voltar com Alt+← para antes do grupo o fecham, e a faixa volta a mostrar os 4 cartões e o grupo. Alt+número e Ctrl+número de um job agrupado também abrem o grupo nele. O limite muda em `[jobs] strip_cards`.
+
+Cada cartão mostra as 3 últimas linhas da saída (`[jobs] strip_lines`); o cartão selecionado mostra as 5 últimas, e para ver tudo basta abrir o job (Enter ou clique).
+
+Quando os cartões visíveis não cabem, a faixa primeiro recolhe os jobs quietos (sem saída há mais de 10 segundos) em cartões de uma linha, como `● #2 worker · 12m`; os que estão ativos, com erro, selecionados ou recebendo o teclado continuam inteiros. Depois, os cartões se estreitam até um mínimo legível. Só se nem assim couber (numa janela muito estreita) a faixa vira um carrossel: setas nas pontas mostram quantos cartões estão fora de vista de cada lado (`‹ 2`, `3 ›`), e clicar nelas ou usar a roda do mouse sobre a faixa rola, com animação.
 
 Pelo teclado, **Alt+← / Alt+→** selecionam um cartão (com borda de destaque) e rolam a faixa até ele. Com um cartão selecionado, ←/→ continuam andando entre eles, **Enter** abre o job, **Alt+S** envia para ele, **Alt+R** reinicia, **Alt+.** para e **Esc** tira a seleção. Qualquer outra tecla também tira a seleção e segue para o shell normalmente. Também dá para controlar o job sem abri-lo. Com o mouse sobre o cartão, aparecem três ações:
 
@@ -213,7 +217,7 @@ EDITOR = "nvim"
 | `[scrollback]` | `lines` |
 | `[history]` | `save` (guardar os comandos entre sessões), `lines` |
 | `[clipboard]` | `system` (copiar e colar pela área de transferência do sistema; com `false`, fica tudo dentro do doted) |
-| `[jobs]` | `strip` (a faixa de jobs ao vivo no topo da janela), `strip_lines` (quantas linhas cada cartão mostra; padrão 2) |
+| `[jobs]` | `strip` (a faixa de jobs ao vivo no topo da janela), `strip_lines` (quantas linhas cada cartão mostra; padrão 3), `strip_cards` (quantos cartões aparecem antes de agrupar os demais; padrão 4) |
 | `[links]` | `editor` (comando que abre um arquivo clicado, com `{file}`, `{line}` e `{col}`; por exemplo `"zed {file}:{line}:{col}"`) |
 | `[notify]` | `enabled`, `after_seconds` (quanto um comando precisa durar para notificar; padrão 10) |
 | `[status]` | `context` (branch do git com os arquivos alterados e duração do último comando na barra de status) |

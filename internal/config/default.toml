@@ -77,7 +77,11 @@ editor = ""
 # lines of output. A card turns red when its job prints an error, shows the
 # local URL it serves, and opens the job when clicked (or with ctrl+1..9).
 strip = true
-strip_lines = 2
+strip_lines = 3
+# The first jobs' cards always show, up to this many; later jobs are
+# grouped in one card on the right and show when you move to them
+# (alt+arrows, alt+number or a click on the group).
+strip_cards = 4
 
 [notify]
 # A system notification when a command that ran for at least after_seconds
