@@ -233,7 +233,7 @@ func lineRunes(sb *terminal.Scrollback, seq int) []rune {
 	if !ok {
 		return nil
 	}
-	return []rune(sb.At(i).Text())
+	return sb.At(i).Runes() // one per cell, so indexes are columns
 }
 
 // selectedOutput is the selected output as text, one line per line, without
@@ -250,7 +250,7 @@ func (g *Game) selectedOutput() string {
 		}
 		runes := lineRunes(g.outSel.sb, seq)
 		from, to, _ := g.outSel.cellsIn(seq, len(runes))
-		lines = append(lines, strings.TrimRight(string(runes[from:max(from, to)]), " "))
+		lines = append(lines, strings.TrimRight(terminal.StringOf(runes[from:max(from, to)]), " "))
 	}
 	return strings.Join(lines, "\n")
 }

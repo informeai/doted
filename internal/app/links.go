@@ -12,6 +12,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+
+	"github.com/informeai/doted/internal/terminal"
 )
 
 // Holding Cmd (Ctrl on Linux and Windows) turns URLs and paths to existing
@@ -52,7 +54,7 @@ func linkAt(text []rune, col int, dir string) (link, bool) {
 	if col >= end {
 		return link{}, false
 	}
-	word := string(text[start:end])
+	word := terminal.StringOf(text[start:end])
 
 	if strings.HasPrefix(word, "http://") || strings.HasPrefix(word, "https://") {
 		return link{start: start, end: end, url: word}, len(word) > len("https://")

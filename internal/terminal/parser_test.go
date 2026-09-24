@@ -130,3 +130,114 @@ func TestParserSkipsTheAlternateScreen(t *testing.T) {
 		t.Fatalf("lines = %q, want before and after only", got)
 	}
 }
+
+func TestParserProgress(t *testing.T) {
+	tests := []struct {
+		name   string
+		chunks []string
+		want   []string
+	}{
+		{"docker pull redraws its lines",
+			[]string{"a: Waiting\r\nb: Waiting\r\n", "\x1b[2A\x1b[2Ka: Pulling\r\n\x1b[2Kb: Waiting\r\n", "\x1b[2A\x1b[2Ka: Done\r\n\x1b[2Kb: Done\r\n"},
+			[]string{"a: Done", "b: Done"}},
+		{"a spinner on the line above",
+			[]string{"⠋ installing\r\n", "\x1b[1A\x1b[2K⠙ installing\r\n", "\x1b[1A\x1b[2K✓ installed\r\n"},
+			[]string{"✓ installed"}},
+		{"cursor to the start of a line above",
+			[]string{"one\r\ntwo\r\n\x1b[2FONE\r\n"},
+			[]string{"ONE", "two"}},
+		{"erase below the cursor",
+			[]string{"1\r\n2\r\n3\r\n\x1b[2A\x1b[J"},
+			[]string{"1"}},
+		{"never above the command's first line",
+			[]string{"x\r\n\x1b[5Ay"},
+			[]string{"y"}},
+		{"save and restore the cursor",
+			[]string{"a\x1b7\r\nb\r\nc\x1b8Z"},
+			[]string{"aZ", "b", "c"}},
+		{"CSI s and u",
+			[]string{"a\x1b[s\r\nb\x1b[uZ"},
+			[]string{"aZ", "b"}},
+		{"line feed in the middle moves down",
+			[]string{"1\r\n2\r\n3\x1b[2A\r\nX"},
+			[]string{"1", "X", "3"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, lines := run(tt.chunks...)
+			if got := texts(lines); !slices.Equal(got, tt.want) {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParserCursorPositionOnScreen(t *testing.T) {
+	sb := NewScrollback(0)
+	p := NewParser(sb)
+	p.Rows = 3
+	p.Begin()
+	// The screen is the last three lines: row 1 is "2".
+	p.Write([]byte("1\r\n2\r\n3\r\n4\x1b[1;1HX\x1b[3;2HY"), time.Now())
+	p.End()
+	var got []string
+	for i := range sb.Len() {
+		got = append(got, sb.At(i).Text())
+	}
+	if !slices.Equal(got, []string{"1", "X", "3", "4Y"}) {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestParserKeepsEarlierLines(t *testing.T) {
+	sb := NewScrollback(0)
+	sb.Append(Command, "$ docker pull", time.Now())
+	p := NewParser(sb)
+	p.Begin()
+	p.Write([]byte("layer\r\n\x1b[9A\x1b[2Kover"), time.Now())
+	p.End()
+	if sb.At(0).Text() != "$ docker pull" || sb.At(1).Text() != "over" {
+		t.Fatalf("got %q, %q", sb.At(0).Text(), sb.At(1).Text())
+	}
+}
+
+func TestParserRedrawKeepsTheEntrance(t *testing.T) {
+	sb := NewScrollback(0)
+	p := NewParser(sb)
+	p.Begin()
+	t0 := time.Now()
+	p.Write([]byte("10%"), t0)
+	p.Write([]byte("\r\x1b[2K50%"), t0.Add(time.Second))
+	if !sb.At(0).At.Equal(t0) || sb.At(0).Text() != "50%" {
+		t.Fatalf("a redrawn line should keep when it showed up: %v, %q", sb.At(0).At, sb.At(0).Text())
+	}
+}
+
+func TestParserWideCharacters(t *testing.T) {
+	_, lines := run("日本|🚀|x")
+	l := lines[0]
+	// 日 and 本 and 🚀 take two columns each.
+	if len(l.Cells) != 9 || l.Cells[1].Rune != WideTail || l.Cells[6].Rune != WideTail || l.Text() != "日本|🚀|x" {
+		t.Fatalf("%d cells, text %q, runes %q", len(l.Cells), l.Text(), string(l.Runes()))
+	}
+	// Writing over half of a wide character blanks the other half.
+	_, lines = run("日本\rab")
+	if got := lines[0].Text(); got != "ab本" {
+		t.Fatalf("over the first: %q", got)
+	}
+	_, lines = run("日本\x1b[2Gx")
+	if got := lines[0].Text(); got != " x本" {
+		t.Fatalf("over the tail: %q", got)
+	}
+	// Combining marks and joiners take no column.
+	_, lines = run("é|")
+	if len(lines[0].Cells) != 2 {
+		t.Fatalf("combining mark took a cell: %q", lines[0].Text())
+	}
+}
+
+func TestStringOf(t *testing.T) {
+	if got := StringOf([]rune{'日', WideTail, 'a'}); got != "日a" {
+		t.Fatalf("got %q", got)
+	}
+}

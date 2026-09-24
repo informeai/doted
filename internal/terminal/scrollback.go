@@ -24,12 +24,25 @@ type Line struct {
 	At    time.Time
 }
 
+// Text is the line's text; a wide character counts once.
 func (l Line) Text() string {
 	var b strings.Builder
 	for _, c := range l.Cells {
-		b.WriteRune(c.Rune)
+		if c.Rune != WideTail {
+			b.WriteRune(c.Rune)
+		}
 	}
 	return b.String()
+}
+
+// Runes is the line's rune in each cell, WideTail for the second cell of a
+// wide character, so indexes are columns.
+func (l Line) Runes() []rune {
+	rs := make([]rune, len(l.Cells))
+	for i, c := range l.Cells {
+		rs[i] = c.Rune
+	}
+	return rs
 }
 
 // Scrollback holds the output history shown above the input, oldest first.
@@ -62,6 +75,26 @@ func (s *Scrollback) push(l Line) {
 
 // last returns the newest line; only valid until the next push.
 func (s *Scrollback) last() *Line { return &s.lines[len(s.lines)-1] }
+
+// lineAt returns the line numbered seq to change it, or nil when it's gone;
+// only valid until the next push.
+func (s *Scrollback) lineAt(seq int) *Line {
+	i, ok := s.Index(seq)
+	if !ok {
+		return nil
+	}
+	return &s.lines[i]
+}
+
+// cutAfter drops the lines after the one numbered seq.
+func (s *Scrollback) cutAfter(seq int) {
+	if i, ok := s.Index(seq); ok {
+		s.lines = s.lines[:i+1]
+	}
+}
+
+// lastSeq is the number of the newest line.
+func (s *Scrollback) lastSeq() int { return s.dropped + len(s.lines) - 1 }
 
 func (s *Scrollback) pop() { s.lines = s.lines[:len(s.lines)-1] }
 

@@ -60,19 +60,31 @@ func findAll(sb *terminal.Scrollback, query string) []findMatch {
 		return unicode.ToLower(r)
 	}
 	var out []findMatch
+	var runes []rune
+	var cols []int
 	for i := range sb.Len() {
+		// The line's characters and the column each starts at: a wide one
+		// takes two.
+		runes, cols = runes[:0], cols[:0]
 		cells := sb.At(i).Cells
-		for c := 0; c+len(q) <= len(cells); c++ {
+		for c, cell := range cells {
+			if cell.Rune != terminal.WideTail {
+				runes, cols = append(runes, cell.Rune), append(cols, c)
+			}
+		}
+		for c := 0; c+len(q) <= len(runes); c++ {
 			hit := true
 			for k, r := range q {
-				if fold(cells[c+k].Rune) != fold(r) {
+				if fold(runes[c+k]) != fold(r) {
 					hit = false
 					break
 				}
 			}
 			if hit {
-				out = append(out, findMatch{sb.Seq(i), c, len(q)})
-				c += len(q) - 1
+				last := c + len(q) - 1
+				end := cols[last] + max(1, terminal.RuneWidth(runes[last]))
+				out = append(out, findMatch{sb.Seq(i), cols[c], end - cols[c]})
+				c = last
 			}
 		}
 	}

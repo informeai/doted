@@ -528,6 +528,7 @@ func (g *Game) syncPTYSize() {
 		return
 	}
 	g.jobs.Resize(g.cols, g.outputRows)
+	g.parser.Rows = g.outputRows
 	g.ptyCols, g.ptyRows = g.cols, g.outputRows
 }
 
@@ -583,14 +584,14 @@ func (g *Game) requestQuit() {
 }
 
 // typed fires a burst of sparks from the prompt bar for a keystroke that
-// edited text. Only typing at the shell's prompt sparks: not keys sent to a
-// running program (full screen or not), to a job being viewed, or to a
-// card's job.
+// edited text: typing at the shell's prompt, or to a card's job from it.
+// Keys that go straight into a job don't: in its job view, or to the
+// command running in the main view (full screen or not).
 func (g *Game) typed() {
 	if g.cfg.Prompt.Style != config.PromptBar || !g.cfg.Animation.Particles || !g.cfg.Animation.Enabled {
 		return
 	}
-	if g.attached != nil || g.viewing != nil || g.target != nil {
+	if g.viewing != nil || g.attached != nil && g.target == nil {
 		return
 	}
 	barHeight := g.cfg.Font.Size * 1.2 // logical px, until faces are measured

@@ -45,6 +45,12 @@ Enquanto você digita, a palavra do comando muda de cor: na cor de destaque se f
 
 Também como no fish, uma sugestão aparece apagada depois do cursor enquanto você digita, e Tab (ou → no fim da linha) aceita. Ela vem, nesta ordem: do comando mais recente do histórico que começa com o que você digitou; do nome de um comando (do doted, embutido do shell ou do `PATH`); ou de um arquivo ou pasta, no último argumento (`cd Pro` → `cd Projects/`). Entre nomes de comando, o mais curto vence; no empate, os do doted vêm primeiro. Ao aceitar com Tab, a bolinha do cursor some e um sublinhado elétrico corre sob o texto até o fim do comando completado, onde a bolinha reaparece com algumas faíscas (só com o cursor `dot` e as animações ligadas).
 
+### Barras de progresso e caracteres largos
+
+Barras de progresso de várias linhas, como as do `docker pull`, `npm`, `pnpm`, `cargo` e `pip`, são redesenhadas no lugar: o doted segue o cursor quando o programa sobe linhas (`ESC[A`, `ESC[F`), vai a uma posição da tela (`ESC[H`), apaga abaixo dele (`ESC[J`) ou salva e restaura sua posição (`ESC 7`/`ESC 8`), sempre dentro das linhas do próprio comando. No fim fica só o resultado final, sem uma cópia de cada atualização, e reescrever uma linha não repete a animação de entrada.
+
+Caracteres largos, como chinês, japonês, coreano e emoji, ocupam duas colunas, como num terminal, e não desalinham o que vem depois. O que a fonte configurada não tem é buscado em fontes do sistema: símbolos, emoji coloridos e CJK (no macOS, Apple Symbols, Apple Color Emoji e Hiragino; no Linux, o que o fontconfig indicar; no Windows, Segoe UI Symbol, Segoe UI Emoji e Microsoft YaHei). Essas fontes são lidas sob demanda, sem carregar o arquivo inteiro na memória. Selecionar, copiar, buscar e clicar em links contam cada caractere largo uma vez.
+
 ### Programas de tela cheia
 
 `vim`, `less`, `htop`, `man`, `nano` e outros programas que ocupam a tela inteira funcionam: quando um deles entra na tela alternativa, a área de saída passa a mostrar a grade completa do terminal, com cores (na paleta do tema), cursor e movimentação livre, e volta para o histórico quando ele sai, sem deixar o conteúdo da tela no histórico. Enquanto isso, todas as teclas vão para o programa, inclusive Esc, Ctrl+B, PgUp/PgDn, F1–F12 e Alt, codificadas nos modos que ele pedir, e a roda do mouse vira setas. Com isso, `git log` e `man` voltam a usar o `less` como pager.
@@ -325,7 +331,7 @@ go test -tags smoke ./internal/app/
 
 ## Limitações atuais
 
-- O cursor só se move dentro da linha atual; sequências que movem o cursor para outras linhas são ignoradas.
+- O cursor de um comando só volta até a primeira linha que ele escreveu; programas que redesenham a tela inteira sem usar a tela alternativa podem sobrar linhas acima.
 - Jobs em background não são pausados (não há Ctrl+Z/SIGTSTP): eles continuam rodando.
 - No Linux, a área de transferência do sistema precisa do `wl-clipboard` (Wayland) ou do `xclip`/`xsel` (X11); o `.deb` recomenda um deles.
-- Caracteres largos (CJK, emoji) desalinham a grade, e a fonte Go Mono tem cobertura limitada de símbolos.
+- Na linha de entrada, caracteres largos (CJK, emoji) ainda contam como uma coluna, então o cursor fica deslocado depois deles; na saída eles ocupam as duas colunas certas. Emoji compostos (famílias, bandeiras, tons de pele) aparecem como seus caracteres separados.

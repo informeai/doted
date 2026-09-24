@@ -146,8 +146,17 @@ func (g *Game) drawScreen(dst *ebiten.Image, j *jobs.Job, x, top float64, now ti
 	w, h := scr.Width(), scr.Height()
 	row := make([]terminal.Cell, w)
 	for y := range h {
+		wide := false
 		for cx := range w {
-			row[cx] = vtCell(scr.CellAt(cx, y))
+			c := scr.CellAt(cx, y)
+			if wide {
+				// The second column of a wide character.
+				row[cx] = terminal.Cell{Rune: terminal.WideTail, Style: row[cx-1].Style}
+				wide = false
+				continue
+			}
+			row[cx] = vtCell(c)
+			wide = c != nil && c.Width == 2
 		}
 		g.drawCells(dst, row, x, top+float64(y)*f.lineH, terminal.Output, 1)
 	}

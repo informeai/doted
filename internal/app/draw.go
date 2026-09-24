@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -54,8 +55,12 @@ func fontVariant(a terminal.Attr) fonts.Variant {
 // faceSet caches the sized faces and the monospace cell metrics for one
 // font configuration and device scale.
 type faceSet struct {
-	scale      float64
-	faces      [4]*text.GoTextFace
+	scale float64
+	// faces draw text: the configured font, then the system's fallback
+	// fonts for what it lacks (emoji, CJK, symbols). The grid is measured
+	// from the configured font alone.
+	faces      [4]text.Face
+	advances   map[rune]float64 // how wide a glyph drawn one by one is; see drawGlyph
 	cellW      float64
 	lineH      float64
 	textDY     float64 // centers glyphs vertically inside a row
@@ -65,18 +70,30 @@ type faceSet struct {
 }
 
 func newFaceSet(fam fonts.Family, cfg config.Font, scale float64) *faceSet {
-	f := &faceSet{scale: scale}
-	for i, face := range fam.Faces {
-		f.faces[i] = face.NewFace(cfg.Size * scale)
+	f := &faceSet{scale: scale, advances: map[rune]float64{}}
+	var fallbacks []text.Face
+	for _, src := range fonts.Fallbacks() {
+		fallbacks = append(fallbacks, &text.GoTextFace{Source: src, Size: cfg.Size * scale})
 	}
-	m := f.faces[0].Metrics()
+	var primary *text.GoTextFace
+	for i, face := range fam.Faces {
+		main := face.NewFace(cfg.Size * scale)
+		if i == 0 {
+			primary = main
+		}
+		f.faces[i] = main
+		if multi, err := text.NewMultiFace(append([]text.Face{main}, fallbacks...)...); err == nil {
+			f.faces[i] = multi
+		}
+	}
+	m := primary.Metrics()
 	glyphH := m.HAscent + m.HDescent
 	f.lineH = math.Ceil(glyphH * cfg.LineHeight)
 	f.textDY = (f.lineH - glyphH) / 2
 	f.glyphH = glyphH
 	f.baselineY = f.textDY + m.HAscent
 	f.underlineY = f.baselineY + scale
-	f.cellW = text.AdvanceAt("M", 1, f.faces[0])
+	f.cellW = text.AdvanceAt("M", 1, primary)
 	return f
 }
 
@@ -109,22 +126,22 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 	g.outputRows = max(1, int((outputBottom-outputTop)/f.lineH))
 
-	sb, jobCursor := g.scrollback, -1
+	sb, jobCursor, jobRow := g.scrollback, -1, -1
 	switch {
 	case g.viewing != nil:
 		sb = g.viewing.Output
 		if g.viewing.Running() {
-			jobCursor = g.viewing.Col()
+			jobCursor, jobRow = g.viewing.Col(), g.viewing.Row()
 		}
 	case g.attached != nil:
-		jobCursor = g.parser.Col()
+		jobCursor, jobRow = g.parser.Col(), g.parser.Row()
 	}
 	g.outTop, g.outBottom, g.outLeft = outputTop, outputBottom, pad
 	if sj := g.screenJob(); sj != nil {
 		g.rows = g.rows[:0]
 		g.drawScreen(screen, sj, pad, outputBottom-float64(sj.Screen().Height())*f.lineH, now)
 	} else {
-		g.drawScrollback(screen, sb, jobCursor, outputTop, outputBottom, now)
+		g.drawScrollback(screen, sb, jobCursor, jobRow, outputTop, outputBottom, now)
 		g.drawLinkHover(screen)
 	}
 	g.stripRoom = outputBottom - pad
@@ -310,8 +327,8 @@ func (g *Game) inputLayout() (rows [][]rune, cursorRow, cursorCol int) {
 
 // drawScrollback paints sb from the newest line upwards, so the most recent
 // output always hugs the input box. A cursorCol >= 0 draws a running job's
-// cursor at that column of the newest line.
-func (g *Game) drawScrollback(dst *ebiten.Image, sb *terminal.Scrollback, cursorCol int, top, bottom float64, now time.Time) {
+// cursor at that column of the line numbered cursorRow.
+func (g *Game) drawScrollback(dst *ebiten.Image, sb *terminal.Scrollback, cursorCol, cursorRow int, top, bottom float64, now time.Time) {
 	f := g.faces
 	pad := g.cfg.Window.Padding * g.scale
 	y := bottom
@@ -338,7 +355,7 @@ func (g *Game) drawScrollback(dst *ebiten.Image, sb *terminal.Scrollback, cursor
 		}
 		rows := terminal.Wrap(line.Cells, g.cols)
 		curRow, curCol := -1, 0
-		if i == last && cursorCol >= 0 {
+		if seq == cursorRow && cursorCol >= 0 {
 			curRow, curCol = cursorCol/g.cols, cursorCol%g.cols
 			for len(rows) <= curRow {
 				rows = append(rows, nil)
@@ -374,7 +391,10 @@ func (g *Game) drawScrollback(dst *ebiten.Image, sb *terminal.Scrollback, cursor
 	}
 }
 
-// drawCells draws one row, one span per run of equally styled cells.
+// drawCells draws one row, one span per run of equally styled cells. Plain
+// ASCII is drawn a run at a time; other characters one by one, each in its
+// own columns, since glyphs from fallback fonts (emoji, CJK) aren't as wide
+// as the grid's cells and wide characters take two.
 func (g *Game) drawCells(dst *ebiten.Image, cells []terminal.Cell, x, y float64, kind terminal.Kind, alpha float64) {
 	f := g.faces
 	var runes []rune
@@ -383,10 +403,6 @@ func (g *Game) drawCells(dst *ebiten.Image, cells []terminal.Cell, x, y float64,
 		end := start + 1
 		for end < len(cells) && cells[end].Style == st {
 			end++
-		}
-		runes = runes[:0]
-		for _, c := range cells[start:end] {
-			runes = append(runes, c.Rune)
 		}
 		sx := x + float64(start)*f.cellW
 		width := float64(end-start) * f.cellW
@@ -409,13 +425,67 @@ func (g *Game) drawCells(dst *ebiten.Image, cells []terminal.Cell, x, y float64,
 		if st.Attrs&terminal.Dim != 0 {
 			a *= dimAlpha
 		}
-		g.drawTextFace(dst, f.faces[fontVariant(st.Attrs)], string(runes), sx, y, fg, a)
+		face := f.faces[fontVariant(st.Attrs)]
+		runes = runes[:0]
+		from := start // where the pending ASCII run starts
+		flush := func() {
+			if len(runes) > 0 {
+				g.drawTextFace(dst, face, string(runes), x+float64(from)*f.cellW, y, fg, a)
+				runes = runes[:0]
+			}
+		}
+		for i := start; i < end; i++ {
+			r := cells[i].Rune
+			switch {
+			case r >= 0x20 && r < 0x7f:
+				if len(runes) == 0 {
+					from = i
+				}
+				runes = append(runes, r)
+			case r == terminal.WideTail:
+				flush()
+			default:
+				flush()
+				cols := 1
+				if i+1 < len(cells) && cells[i+1].Rune == terminal.WideTail {
+					cols = 2
+				}
+				g.drawGlyph(dst, face, r, x+float64(i)*f.cellW, y, cols, fg, a)
+			}
+		}
+		flush()
 		if st.Attrs&terminal.Underline != 0 {
 			uy := float32(y + f.underlineY)
 			vector.StrokeLine(dst, float32(sx), uy, float32(sx+width), uy, float32(g.scale), scaleAlpha(fg, a), false)
 		}
 		start = end
 	}
+}
+
+// drawGlyph draws r centered in cols cells from x.
+func (g *Game) drawGlyph(dst *ebiten.Image, face text.Face, r rune, x, y float64, cols int, clr color.RGBA, alpha float64) {
+	if r == ' ' || r == 0 {
+		return
+	}
+	f := g.faces
+	adv, ok := f.advances[r]
+	if !ok {
+		adv = text.Advance(string(r), face)
+		f.advances[r] = adv
+	}
+	if cols == 2 && isEmoji(r) {
+		clr = color.RGBA{0xff, 0xff, 0xff, 0xff} // its own colors, untinted
+	}
+	g.drawTextFace(dst, face, string(r), x+(float64(cols)*f.cellW-adv)/2, y, clr, alpha)
+}
+
+// isEmoji reports whether a wide character is an emoji, drawn in its own
+// colors, rather than a Chinese, Japanese or Korean one drawn in the
+// text's color.
+func isEmoji(r rune) bool {
+	return !unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul, unicode.Bopomofo) &&
+		!(r >= 0x3000 && r <= 0x303f) && // CJK punctuation
+		!(r >= 0xff00 && r <= 0xffef) // fullwidth forms
 }
 
 // entrance animates a freshly appended line: it fades in while sliding up.
@@ -694,7 +764,7 @@ func (g *Game) drawText(dst *ebiten.Image, s string, x, y float64, clr color.RGB
 	g.drawTextFace(dst, g.faces.faces[fonts.Regular], s, x, y, clr, alpha)
 }
 
-func (g *Game) drawTextFace(dst *ebiten.Image, face *text.GoTextFace, s string, x, y float64, clr color.RGBA, alpha float64) {
+func (g *Game) drawTextFace(dst *ebiten.Image, face text.Face, s string, x, y float64, clr color.RGBA, alpha float64) {
 	if s == "" || alpha <= 0 || strings.TrimLeft(s, " ") == "" {
 		return
 	}

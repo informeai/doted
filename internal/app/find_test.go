@@ -57,3 +57,20 @@ func TestFindScrollsAndUnfolds(t *testing.T) {
 		t.Fatalf("selected = %d after wrapping", g.panel.selected)
 	}
 }
+
+func TestFindAcrossWideCharacters(t *testing.T) {
+	sb := terminal.NewScrollback(100)
+	p := terminal.NewParser(sb)
+	p.Begin()
+	p.Write([]byte("日本語 error 日本"), time.Now())
+	p.End()
+	got := findAll(sb, "error")
+	// 日本語 takes six columns and a space one: error starts at column 7.
+	if len(got) != 1 || got[0].col != 7 || got[0].n != 5 {
+		t.Fatalf("error: %v", got)
+	}
+	got = findAll(sb, "日本")
+	if len(got) != 2 || got[0] != (findMatch{0, 0, 4}) || got[1].col != 13 {
+		t.Fatalf("日本: %v", got)
+	}
+}

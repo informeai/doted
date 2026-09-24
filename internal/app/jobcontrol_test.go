@@ -115,10 +115,18 @@ func TestOnlyThePromptSparks(t *testing.T) {
 	run(g, "read x; sleep 30 &")
 	g.sendToCard(1)
 	g.typed()
-	if len(g.sparks.items) != 0 {
-		t.Fatal("typing to a card's job should not spark")
+	if len(g.sparks.items) == 0 {
+		t.Fatal("typing to a card's job sparks too")
 	}
+	g.sparks.items = nil
 	g.exitTarget()
+
+	g.openJob(g.stripJob(1)) // inside the job, keys go straight to it
+	g.typed()
+	if len(g.sparks.items) != 0 {
+		t.Fatal("typing inside a job should not spark")
+	}
+	g.closeJob()
 
 	run(g, "read y") // a running command has the keyboard
 	g.typed()

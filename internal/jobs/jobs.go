@@ -48,6 +48,9 @@ func (j *Job) Running() bool { return j.proc.Running() }
 // Col is the job's cursor column on its newest output line.
 func (j *Job) Col() int { return j.parser.Col() }
 
+// Row is the seq of the output line the job's cursor is on.
+func (j *Job) Row() int { return j.parser.Row() }
+
 // Write sends raw input to the job. It goes through the screen's input like
 // keys and pastes do, so everything typed reaches the program in order.
 func (j *Job) Write(b []byte) error {
@@ -174,6 +177,7 @@ func (m *Manager) Start(s *shell.Session, cmdline string, cols, rows int, now ti
 		screen:        vt.NewEmulator(cols, rows),
 		cursorVisible: true,
 	}
+	j.parser.Rows = rows
 	j.parser.Begin()
 	j.screen.SetScrollbackSize(0) // the line history is Output
 	j.screen.SetCallbacks(vt.Callbacks{CursorVisibility: func(v bool) { j.cursorVisible = v }})
@@ -272,6 +276,7 @@ func (m *Manager) Remove(j *Job) {
 func (m *Manager) Resize(cols, rows int) {
 	for _, j := range m.jobs {
 		j.proc.Resize(cols, rows)
+		j.parser.Rows = rows
 		if j.Running() {
 			j.screen.Resize(cols, rows)
 		}
