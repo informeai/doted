@@ -9,7 +9,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
-// A job card's border tells what's happening in it:
+// A job card has no border of its own, only a raised surface on a shadow;
+// its edge lights up to tell what's happening in it:
 //
 //   - while output comes in, a beam of light runs around the border in the
 //     accent color, and fades away once the job goes quiet;
@@ -133,11 +134,10 @@ func drawCardShadow(dst *ebiten.Image, x, y, w, h, r, scale, lift, alpha float64
 	}
 }
 
-// cardBorder draws the border of job j's card along p, as its events say.
+// cardBorder lights up the edge of job j's card along p, as its events say;
+// with nothing going on, it draws nothing.
 func (g *Game) cardBorder(dst *ebiten.Image, p perimeter, w *jobWatch, running bool, ended time.Time, state color.RGBA, alpha float64, now time.Time) {
 	width := math.Max(1.5, 2*g.scale)
-	base := mixRGBA(g.theme.Border, g.theme.Foreground, 0.12)
-	drawTrace(dst, p, 1, math.Max(1, g.scale), alpha, base)
 	if !g.cfg.Animation.Enabled {
 		return
 	}

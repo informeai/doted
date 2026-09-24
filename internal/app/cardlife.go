@@ -440,17 +440,14 @@ func (g *Game) drawGroup(dst *ebiten.Image, grouped []*jobs.Job, x, y, w, k floa
 	h = gh
 	r := math.Min(f.lineH/3, h/2)
 	surface := mixRGBA(g.theme.Background, g.theme.Border, 0.55+0.25*lift)
-	edge := mixRGBA(g.theme.Border, g.theme.Foreground, 0.12)
 	// A pile: two cards peek out behind the front one.
 	for i := 2; i >= 1; i-- {
 		off := float64(i) * 3 * g.scale
 		fillRoundRect(dst, gx+off, gy+off, gw-off, h-off, r, scaleAlpha(mixRGBA(g.theme.Background, g.theme.Border, 0.35), 1))
-		drawTrace(dst, cardPerimeter(gx+off, gy+off, gw-off, h-off, r), 1, math.Max(1, g.scale), 0.6, edge)
 	}
 	fw, fh := gw-6*g.scale, h-6*g.scale
 	drawCardShadow(dst, gx, gy, fw, fh, r, g.scale, lift, 1)
 	fillRoundRect(dst, gx, gy, fw, fh, r, surface)
-	drawTrace(dst, cardPerimeter(gx, gy, fw, fh, r), 1, math.Max(1, g.scale), 1, edge)
 
 	clip := dst.SubImage(image.Rect(int(gx), int(gy), int(math.Ceil(gx+fw)), int(math.Ceil(gy+fh)))).(*ebiten.Image)
 	// The count rolls when it changes.
