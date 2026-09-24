@@ -132,6 +132,16 @@ func (g *Game) handleTargetKeys() {
 		g.flash(name + " has ended")
 		return
 	}
+	// A full-screen program gets every key, Esc included; Ctrl+B goes back,
+	// as it does from a job view.
+	if j.FullScreen() {
+		if ctrlPressed(ebiten.KeyB) {
+			g.exitTarget()
+			return
+		}
+		g.forwardKeyboard(j)
+		return
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		g.exitTarget()
 		return

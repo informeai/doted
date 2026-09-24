@@ -160,7 +160,9 @@ Pelo teclado, **Alt+← / Alt+→** selecionam um cartão (com borda de destaque
 
 - **restart** para o job e, quando ele termina (para um servidor liberar a porta), roda o mesmo comando de novo no mesmo lugar da faixa;
 - **stop** envia Ctrl+C; se o job não parar, o botão vira **kill** por alguns segundos e um segundo clique o mata;
-- **send** (ou Alt+1 a Alt+9) aponta a linha de entrada para o job: o prompt mostra `→ dev ›`, o cartão ganha uma borda na cor de destaque e mais linhas, e o que você digita vai para ele, sem sair da tela principal. Se o job lê uma linha por vez (um `read`, uma pergunta `y/n`, o `rs` do nodemon), você edita a linha no doted e o Enter a envia; se ele lê tecla a tecla (o `r` e o `q` do Vite, o `a` e o `p` do Jest e do Vitest, um REPL), cada tecla vai na hora. O doted descobre sozinho qual é o caso pelo modo do terminal do job. Esc devolve a linha ao shell, com o que você tinha digitado antes; se o job terminar, ela volta sozinha. Para desligar a faixa ou mudar quantas linhas cada cartão mostra, use `[jobs] strip` e `strip_lines`.
+- **send** (ou Alt+1 a Alt+9) aponta a linha de entrada para o job: o prompt mostra `→ dev ›`, o cartão ganha uma borda na cor de destaque e mais linhas, e o que você digita vai para ele, sem sair da tela principal. Se o job lê uma linha por vez (um `read`, uma pergunta `y/n`, o `rs` do nodemon), você edita a linha no doted e o Enter a envia; se ele lê tecla a tecla (o `r` e o `q` do Vite, o `a` e o `p` do Jest e do Vitest, um REPL), cada tecla vai na hora. O doted descobre sozinho qual é o caso pelo modo do terminal do job. Esc devolve a linha ao shell, com o que você tinha digitado antes; se o job terminar, ela volta sozinha.
+
+Jobs com programas de tela cheia (vim, `less`, `git log`, htop) não escrevem no histórico, mas numa tela à parte. Enquanto um deles está em tela cheia, o cartão mostra as linhas dessa tela em volta do cursor, com o selo `full screen`. Ao enviar para ele (**send** ou Alt+número), o cartão se abre numa janela flutuante sobre a saída, com a tela inteira do programa em tamanho normal, sem sair da tela principal: a faixa de jobs e a barra de status continuam visíveis. O terminal do job ganha o tamanho da janela enquanto ela está aberta, e o programa se redesenha para ela. Todas as teclas vão para o programa, inclusive o Esc; **Ctrl+B** fecha a janela, que volta para o cartão, como ao sair da visão de um job. Para desligar a faixa ou mudar quantas linhas cada cartão mostra, use `[jobs] strip` e `strip_lines`.
 
 **Lista de jobs** (Ctrl+T ou `jobs`): mostra cada job com status, tempo e a última linha de saída.
 
@@ -303,6 +305,7 @@ internal/
     cardborder.go        sombra e bordas animadas dos cartões
     cardlife.go          entrada, pílula de resultado, saída, mini cartões e carrossel
     stripnav.go          seleção de cartões e atalhos pelo número do job
+    jobfloat.go          janela flutuante para enviar a jobs em tela cheia
     jobcontrol.go        restart, stop e enviar entrada aos jobs pelos cartões
   config/                arquivo TOML: padrões (default.toml), validação e watcher
   fonts/                 resolução da fonte por nome ou arquivo, com variantes

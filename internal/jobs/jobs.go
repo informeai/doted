@@ -33,6 +33,10 @@ type Job struct {
 
 	Output *terminal.Scrollback
 
+	// LastOutput is when the job last wrote anything, to the line history
+	// or to a full-screen program's screen.
+	LastOutput time.Time
+
 	proc   *shell.Process
 	parser *terminal.Parser
 
@@ -208,6 +212,7 @@ func (m *Manager) Poll(now time.Time, fn func(*Job, shell.Event)) {
 			if !ev.Done {
 				j.parser.Write(ev.Data, now)
 				j.screen.Write(ev.Data)
+				j.LastOutput = now
 			} else {
 				j.parser.End()
 				j.closeScreen()
@@ -275,11 +280,17 @@ func (m *Manager) Remove(j *Job) {
 // Resize gives every running job a terminal of cols×rows cells.
 func (m *Manager) Resize(cols, rows int) {
 	for _, j := range m.jobs {
-		j.proc.Resize(cols, rows)
-		j.parser.Rows = rows
-		if j.Running() {
-			j.screen.Resize(cols, rows)
-		}
+		j.Resize(cols, rows)
+	}
+}
+
+// Resize gives the job a terminal of cols×rows cells; the program is told
+// (SIGWINCH) and redraws for it.
+func (j *Job) Resize(cols, rows int) {
+	j.proc.Resize(cols, rows)
+	j.parser.Rows = rows
+	if j.Running() {
+		j.screen.Resize(cols, rows)
 	}
 }
 

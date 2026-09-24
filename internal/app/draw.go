@@ -149,6 +149,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	if g.cardSparks != nil {
 		g.cardSparks.draw(screen, 0, 0, g.scale, g.theme.Accent, g.theme.Foreground)
 	}
+	g.drawFloat(screen, now)
 	switch {
 	case g.panel.open && g.panel.kind == panelHelp:
 		g.drawHelpPanel(screen, pad, w-pad, upperRule-gap)
@@ -170,6 +171,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// While a job has the keyboard, its cursor is drawn in the output instead.
 	var inputHint string
 	switch {
+	case g.target != nil && g.target.FullScreen():
+		inputHint = "each key goes to " + g.watchOf(g.target).name + " · ctrl+b returns to the shell"
 	case g.target != nil && g.targetRaw && g.editor.Empty():
 		inputHint = "each key goes to it as you press it · esc returns to the shell"
 	case g.viewing != nil && g.viewing.Running():
@@ -676,7 +679,11 @@ func (g *Game) statusHint(now time.Time) (hint string, spinner bool) {
 	case g.stripSel != nil || g.groupSel:
 		hint = g.selectionHint()
 	case g.target != nil:
-		hint, spinner = "sending to "+g.watchOf(g.target).name+" · esc returns to the shell", true
+		back := "esc"
+		if g.target.FullScreen() {
+			back = "ctrl+b" // esc belongs to the program
+		}
+		hint, spinner = "sending to "+g.watchOf(g.target).name+" · "+back+" returns to the shell", true
 	case g.scroll > 0:
 		hint = "scrolled up · pgdn to return"
 	case g.screenJob() != nil:

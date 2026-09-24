@@ -94,6 +94,9 @@ func (g *Game) watchJobs(now time.Time) {
 			w = &jobWatch{name: jobName(j.Command), shownAt: now}
 			g.watches[j] = w
 		}
+		if j.LastOutput.After(w.activityAt) {
+			w.activityAt = j.LastOutput // a full-screen program redrawing counts too
+		}
 		out := j.Output
 		if out.Len() == 0 {
 			continue
@@ -164,6 +167,9 @@ func (g *Game) cardLines(j *jobs.Job) int {
 	n := base
 	switch j {
 	case g.target:
+		if j.FullScreen() {
+			break // the floating window shows it whole
+		}
 		n = max(n, targetLines)
 	case g.stripSel:
 		n = max(n, selectedLines)
@@ -365,6 +371,8 @@ func (g *Game) drawCardContent(dst *ebiten.Image, j *jobs.Job, wt *jobWatch, x, 
 		}
 	case hover:
 		spots = []spot{{"restart", "restart"}}
+	case j.Running() && j.FullScreen():
+		spots = []spot{{"full screen", "label"}}
 	case wt.url != "":
 		spots = []spot{{strings.TrimPrefix(strings.TrimPrefix(wt.url, "http://"), "https://"), ""}}
 	}
@@ -379,7 +387,7 @@ func (g *Game) drawCardContent(dst *ebiten.Image, j *jobs.Job, wt *jobWatch, x, 
 	// They get what the name leaves; a URL shortens, actions go if they
 	// don't fit.
 	if room := cols - 2 - nameCols - 2; rightCols > room {
-		if len(spots) == 1 && spots[0].action == "" && room >= 8 {
+		if len(spots) == 1 && (spots[0].action == "" || spots[0].action == "label") && room >= 8 {
 			spots[0].text = truncate(spots[0].text, room)
 			rightCols = room
 		} else {
@@ -400,6 +408,11 @@ func (g *Game) drawCardContent(dst *ebiten.Image, j *jobs.Job, wt *jobWatch, x, 
 		sw := float64(utf8.RuneCountInString(sp.text)) * f.cellW
 		over := float64(mx) >= rx && float64(mx) < rx+sw && float64(my) >= ty && float64(my) < ty+f.lineH
 		clr := g.theme.Muted
+		if sp.action == "label" {
+			g.drawText(dst, sp.text, rx, ty, g.theme.Muted, alpha*0.8)
+			rx += sw + 2*f.cellW
+			continue
+		}
 		switch {
 		case sp.action == "":
 			clr = g.theme.Accent // the URL
@@ -422,6 +435,10 @@ func (g *Game) drawCardContent(dst *ebiten.Image, j *jobs.Job, wt *jobWatch, x, 
 	}
 
 	// The last lines, errors in red.
+	if j.Running() && j.FullScreen() {
+		g.drawCardScreen(dst, j, tx, ty+f.lineH, cols, g.cardLines(j), alpha)
+		return
+	}
 	for i, line := range j.Tail(g.cardLines(j)) {
 		clr, a := g.theme.Foreground, alpha*0.7
 		if isError(line) {

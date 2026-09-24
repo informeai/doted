@@ -290,6 +290,7 @@ func stripArrowW(f *faceSet) float64 { return 5 * f.cellW }
 // they don't all fit.
 func (g *Game) drawStrip(dst *ebiten.Image, left, right, y float64, now time.Time) {
 	g.stripHits = g.stripHits[:0]
+	g.stripTop = y
 	cards, grouped, open := g.stripGroups(now)
 	dt := math.Min(0.1, now.Sub(g.stripDrawn).Seconds())
 	g.stripDrawn = now

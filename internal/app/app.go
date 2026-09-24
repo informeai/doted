@@ -107,6 +107,8 @@ type Game struct {
 	stripGroup                 groupCard                   // the card grouping the jobs past the first ones
 	stripRoom                  float64                     // how tall a card may grow: down to the output's bottom
 	cardSparks                 *sparks                     // shed by cards as they leave, on screen in logical px
+	float                      floatWindow                 // a full-screen job being sent to; see jobfloat.go
+	stripTop                   float64                     // where the strip was drawn last
 	target                     *jobs.Job                   // the job the input line sends to; see jobcontrol.go
 	targetRaw                  bool                        // it reads a key at a time
 	stash                      string                      // the shell line put aside meanwhile
@@ -309,6 +311,7 @@ func (g *Game) Update() error {
 		g.handleKeyboard()
 	}
 	g.syncPTYSize()
+	g.updateFloat(time.Now())
 	g.handleScrolling()
 	g.updateZap(time.Now())
 	g.sparks.step(tickSeconds)
@@ -532,6 +535,7 @@ func (g *Game) syncPTYSize() {
 		return
 	}
 	g.jobs.Resize(g.cols, g.outputRows)
+	g.float.cols = 0 // the floating window's job gets its own size back
 	g.parser.Rows = g.outputRows
 	g.ptyCols, g.ptyRows = g.cols, g.outputRows
 }

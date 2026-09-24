@@ -143,21 +143,10 @@ func (g *Game) screenJob() *jobs.Job {
 func (g *Game) drawScreen(dst *ebiten.Image, j *jobs.Job, x, top float64, now time.Time) {
 	f := g.faces
 	scr := j.Screen()
-	w, h := scr.Width(), scr.Height()
-	row := make([]terminal.Cell, w)
+	h := scr.Height()
+	var row []terminal.Cell
 	for y := range h {
-		wide := false
-		for cx := range w {
-			c := scr.CellAt(cx, y)
-			if wide {
-				// The second column of a wide character.
-				row[cx] = terminal.Cell{Rune: terminal.WideTail, Style: row[cx-1].Style}
-				wide = false
-				continue
-			}
-			row[cx] = vtCell(c)
-			wide = c != nil && c.Width == 2
-		}
+		row = screenRow(j, y, row)
 		g.drawCells(dst, row, x, top+float64(y)*f.lineH, terminal.Output, 1)
 	}
 	if j.CursorVisible() {
@@ -168,6 +157,26 @@ func (g *Game) drawScreen(dst *ebiten.Image, j *jobs.Job, x, top float64, now ti
 		}
 		g.drawCursor(dst, x+float64(pos.X)*f.cellW, top+float64(pos.Y)*f.lineH, under, now)
 	}
+}
+
+// screenRow is row y of job j's screen as doted's cells, reusing buf.
+func screenRow(j *jobs.Job, y int, buf []terminal.Cell) []terminal.Cell {
+	scr := j.Screen()
+	w := scr.Width()
+	buf = buf[:0]
+	wide := false
+	for cx := range w {
+		c := scr.CellAt(cx, y)
+		if wide {
+			// The second column of a wide character.
+			buf = append(buf, terminal.Cell{Rune: terminal.WideTail, Style: buf[cx-1].Style})
+			wide = false
+			continue
+		}
+		buf = append(buf, vtCell(c))
+		wide = c != nil && c.Width == 2
+	}
+	return buf
 }
 
 // vtCell converts one cell of the emulator's grid to doted's cell, so the
