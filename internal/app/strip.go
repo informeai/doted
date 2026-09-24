@@ -14,10 +14,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/informeai/doted/internal/jobs"
+	"github.com/informeai/doted/internal/terminal"
 )
 
 // The job strip shows each background job as a live card above the input:
-// a short name, how long it has run and its last lines of output. There's
+// its number, a short name, how long it has run and its last lines of
+// output. There's
 // no layout to manage: a card shows up when a job goes to the background
 // and leaves a moment after it ends.
 //
@@ -204,13 +206,14 @@ func (g *Game) handleStripMouse(x, y float64) bool {
 	return true
 }
 
-// jobsHint ends the message about a job going to the background: how to see
-// it, unless its card already shows it.
-func (g *Game) jobsHint() string {
+// jobNotice tells the main view about a background job: that it started,
+// moved there or ended. With the strip on, its card already says so, and
+// the command's line keeps the result, so nothing is added.
+func (g *Game) jobNotice(format string, args ...any) {
 	if g.cfg.Jobs.Strip {
-		return ""
+		return
 	}
-	return " · ctrl+t to see jobs"
+	g.notify(terminal.System, fmt.Sprintf(format, args...))
 }
 
 // openStripCard opens the job on card n (1-based), as Ctrl+n does.
@@ -401,7 +404,10 @@ func (g *Game) drawCard(dst *ebiten.Image, j *jobs.Job, x, y, w, h float64, now 
 	case wt.url != "":
 		spots = []spot{{strings.TrimPrefix(strings.TrimPrefix(wt.url, "http://"), "https://"), ""}}
 	}
-	nameCols := utf8.RuneCountInString(wt.name)
+	// The job's number (as fg takes it) comes before its name.
+	id := fmt.Sprintf("#%d ", j.ID)
+	idCols := utf8.RuneCountInString(id)
+	nameCols := idCols + utf8.RuneCountInString(wt.name)
 	rightCols := -2
 	for _, sp := range spots {
 		rightCols += 2 + utf8.RuneCountInString(sp.text)
@@ -420,7 +426,8 @@ func (g *Game) drawCard(dst *ebiten.Image, j *jobs.Job, x, y, w, h float64, now 
 	if len(spots) > 0 {
 		leftCols -= rightCols + 1
 	}
-	g.drawText(dst, truncate(wt.name, leftCols), tx+2*f.cellW, ty, g.theme.Foreground, alpha)
+	g.drawText(dst, truncate(id, leftCols), tx+2*f.cellW, ty, g.theme.Muted, alpha)
+	g.drawText(dst, truncate(wt.name, leftCols-idCols), tx+float64(2+idCols)*f.cellW, ty, g.theme.Foreground, alpha)
 	if rest := leftCols - nameCols; rest > 3 {
 		g.drawText(dst, truncate(" · "+formatElapsed(j.Elapsed(now)), rest), tx+float64(2+nameCols)*f.cellW, ty, g.theme.Muted, alpha)
 	}

@@ -280,7 +280,7 @@ func (g *Game) drawBlockHeader(dst *ebiten.Image, b *block, seq, cmdLen int, x, 
 func (g *Game) blockBadge(b *block, now time.Time) (string, color.RGBA) {
 	switch {
 	case b.running() && b.background:
-		return fmt.Sprintf("job %d in the background", b.job.ID), g.theme.Muted
+		return fmt.Sprintf("#%d in the background", b.job.ID), g.theme.Muted
 	case b.running():
 		return "running " + formatDuration(now.Sub(b.start)), g.theme.Accent
 	case b.killed:

@@ -1,9 +1,6 @@
 package app
 
 import (
-	"fmt"
-	"time"
-
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 
@@ -47,7 +44,7 @@ func (g *Game) background() {
 	if b := g.blockOf(j); b != nil {
 		b.background = true
 	}
-	g.scrollback.Append(terminal.System, fmt.Sprintf("[%d] moved to background: %s%s", j.ID, j.Command, g.jobsHint()), time.Now())
+	g.jobNotice("[%d] moved to background: %s · ctrl+t to see jobs", j.ID, j.Command)
 	g.scroll = 0
 }
 

@@ -85,7 +85,7 @@ Cada comando executado vira um bloco: a linha do comando e a saída abaixo dela.
 - uma bolinha na cor de destaque, pulsando, e o tempo decorrido enquanto roda;
 - uma bolinha verde e o tempo que levou (`1.2s`) quando termina bem;
 - uma bolinha vermelha, o código de saída e o tempo (`exit 1 · 3.4s`) quando falha ou é morto;
-- `job 2 in the background` quando foi para o background.
+- `#2 in the background` quando foi para o background.
 
 Com o mouse sobre a linha do comando, aparecem duas ações: **copy** copia a saída daquele comando (sem a linha do comando) e **rerun** executa o comando de novo. Clicar na barra do prompt, no começo da linha, recolhe a saída numa única linha `… 42 lines`; clicar de novo (ou nessa linha) expande.
 
@@ -129,9 +129,9 @@ Comandos que prendem o terminal (servidores, watchers, builds longos) podem ir p
 - **Ctrl+B** com um comando rodando: ele vai para o background e o prompt fica livre.
 - **`comando &`**: inicia o comando direto no background (`&&` continua funcionando normalmente).
 
-Cada job guarda a própria saída desde o início, inclusive o que imprimiu enquanto estava em background. Quando um job termina, uma mensagem aparece na tela principal, e a barra de status mostra quantos jobs estão rodando.
+Cada job guarda a própria saída desde o início, inclusive o que imprimiu enquanto estava em background, e a barra de status mostra quantos jobs estão rodando. Com a faixa de jobs ligada (o padrão), a tela principal fica limpa: o cartão mostra o número do job (`#2`, o mesmo do `fg 2`), e a linha do comando mostra `#2 in the background` e, no fim, o resultado. Com a faixa desligada, mensagens como `[2] running in background` e `[2] done` avisam na tela principal.
 
-**Faixa de jobs ao vivo**: cada job em background aparece como um cartão entre a saída e a linha de entrada, com um nome curto (`dev` para `npm run dev`, `watch` para `make watch`), há quanto tempo roda e as últimas linhas da saída, atualizadas ao vivo. Não há layout para gerenciar: o cartão aparece quando o job vai para o background e some alguns segundos depois de ele terminar (20 segundos quando falha). A barra na borda esquerda e a bolinha mostram o estado: cor de destaque, pulsando, enquanto roda; verde quando termina bem; vermelho quando falha.
+**Faixa de jobs ao vivo**: cada job em background aparece como um cartão entre a saída e a linha de entrada, com o número do job e um nome curto (`dev` para `npm run dev`, `watch` para `make watch`), há quanto tempo roda e as últimas linhas da saída, atualizadas ao vivo. Não há layout para gerenciar: o cartão aparece quando o job vai para o background e some alguns segundos depois de ele terminar (20 segundos quando falha). A barra na borda esquerda e a bolinha mostram o estado: cor de destaque, pulsando, enquanto roda; verde quando termina bem; vermelho quando falha.
 
 Os cartões leem a saída enquanto ela chega:
 

@@ -137,9 +137,27 @@ func (g *Game) handleTargetKeys() {
 		return
 	}
 	canonical, ok := j.LineMode()
-	g.targetRaw = ok && !canonical
+	if raw := ok && !canonical; raw != g.targetRaw {
+		g.targetRaw = raw
+		g.editor.Reset() // a line typed in one mode means nothing in the other
+	}
 	if g.targetRaw {
-		g.forwardKeyboard(j) // every key, as it's pressed
+		// Every key goes as it's pressed. The line shows what was typed, as
+		// programs reading keys rarely echo them, until Enter.
+		enter := inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyNumpadEnter)
+		back := repeating(ebiten.KeyBackspace)
+		g.forwardKeyboard(j)
+		for _, r := range g.chars {
+			if !unicode.IsControl(r) {
+				g.editor.Insert(r)
+			}
+		}
+		switch {
+		case enter:
+			g.editor.Reset()
+		case back:
+			g.editor.Backspace()
+		}
 		return
 	}
 

@@ -3,6 +3,7 @@
 package app
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -94,5 +95,22 @@ func TestStripCardOpensJob(t *testing.T) {
 	g.cfg.Jobs.Strip = false
 	if len(g.stripJobs(time.Now())) != 0 {
 		t.Fatal("strip = false should hide it")
+	}
+}
+
+func TestStripKeepsTheOutputClean(t *testing.T) {
+	g := newTestGame(t)
+	run(g, "echo before; read _")
+	j := g.attached
+	g.background()
+	run(g, "true &")
+	j.Write([]byte("\r"))
+	tickUntil(t, g, func() bool { return !j.Running() && !g.jobs.Listed()[1].Running() })
+	if text := mainText(g); strings.Contains(text, "[1]") || strings.Contains(text, "[2]") {
+		t.Fatalf("job messages in the main view with the strip on: %q", text)
+	}
+	// The command's line keeps how it went.
+	if b := g.blockOf(j); b == nil || b.running() || !b.background {
+		t.Fatalf("block = %+v", b)
 	}
 }

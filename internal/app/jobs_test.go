@@ -55,6 +55,7 @@ func TestForegroundCommandIsNotListed(t *testing.T) {
 
 func TestBackgroundKeepsOutputAndNotifies(t *testing.T) {
 	g := newTestGame(t)
+	g.cfg.Jobs.Strip = false // without the strip, messages tell about jobs
 	run(g, "echo before; read _; echo after")
 	j := g.attached
 	tickUntil(t, g, func() bool { return strings.Contains(mainText(g), "before") })
@@ -84,6 +85,7 @@ func TestBackgroundKeepsOutputAndNotifies(t *testing.T) {
 
 func TestTrailingAmpersandStartsInBackground(t *testing.T) {
 	g := newTestGame(t)
+	g.cfg.Jobs.Strip = false
 	run(g, "sleep 30 &")
 	defer g.jobs.KillAll()
 

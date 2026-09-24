@@ -109,7 +109,7 @@ func TestBackgroundBlock(t *testing.T) {
 	j := g.attached
 	g.background()
 	_, b := blockFor(t, g, "read _")
-	if text, _ := g.blockBadge(b, time.Now()); text != "job 1 in the background" {
+	if text, _ := g.blockBadge(b, time.Now()); text != "#1 in the background" {
 		t.Fatalf("badge = %q", text)
 	}
 	j.Write([]byte("\r"))

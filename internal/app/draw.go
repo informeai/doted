@@ -149,7 +149,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// While a job has the keyboard, its cursor is drawn in the output instead.
 	var inputHint string
 	switch {
-	case g.target != nil && g.targetRaw:
+	case g.target != nil && g.targetRaw && g.editor.Empty():
 		inputHint = "each key goes to it as you press it · esc returns to the shell"
 	case g.viewing != nil && g.viewing.Running():
 		inputHint = fmt.Sprintf("input is sent to job %d · ctrl+b to go back", g.viewing.ID)

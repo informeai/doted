@@ -357,7 +357,7 @@ func (g *Game) handleJobEvent(j *jobs.Job, ev shell.Event) {
 		// It ended in the background, after newer commands: its state would
 		// undo theirs.
 		g.session.Discard(j.State())
-		g.notify(terminal.System, fmt.Sprintf("[%d] %s: %s", j.ID, jobResult(j), j.Command))
+		g.jobNotice("[%d] %s: %s", j.ID, jobResult(j), j.Command)
 	}
 }
 
@@ -571,9 +571,14 @@ func (g *Game) requestQuit() {
 }
 
 // typed fires a burst of sparks from the prompt bar for a keystroke that
-// edited text.
+// edited text. Only typing at the shell's prompt sparks: not keys sent to a
+// running program (full screen or not), to a job being viewed, or to a
+// card's job.
 func (g *Game) typed() {
 	if g.cfg.Prompt.Style != config.PromptBar || !g.cfg.Animation.Particles || !g.cfg.Animation.Enabled {
+		return
+	}
+	if g.attached != nil || g.viewing != nil || g.target != nil {
 		return
 	}
 	barHeight := g.cfg.Font.Size * 1.2 // logical px, until faces are measured

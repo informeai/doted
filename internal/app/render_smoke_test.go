@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -59,7 +58,7 @@ func (s *smoke) Update() error {
 		run(s.Game, "help")
 		s.check(s.panel.open && s.panel.kind == panelHelp, "help panel not open")
 	case 200:
-		s.check(strings.Contains(mainText(s.Game), "[1] done"), "no completion notice for job 1")
+		s.check(!s.jobs.Listed()[0].Running(), "job 1 still running")
 		for i, c := range helpCommands {
 			if c.usage == "fg [n]" {
 				s.pickHelp(i)

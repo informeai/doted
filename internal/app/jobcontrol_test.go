@@ -102,3 +102,27 @@ func TestSendToKeyReader(t *testing.T) {
 	j.SendText("r") // what forwardKeyboard does for a key
 	tickUntil(t, g, func() bool { return strings.Contains(jobText(j), "key:r") })
 }
+
+func TestOnlyThePromptSparks(t *testing.T) {
+	g := newTestGame(t)
+	g.cfg.Animation.Enabled, g.cfg.Animation.Particles = true, true
+	g.typed()
+	if len(g.sparks.items) == 0 {
+		t.Fatal("typing at the prompt should spark")
+	}
+	g.sparks.items = nil
+
+	run(g, "read x; sleep 30 &")
+	g.sendToCard(1)
+	g.typed()
+	if len(g.sparks.items) != 0 {
+		t.Fatal("typing to a card's job should not spark")
+	}
+	g.exitTarget()
+
+	run(g, "read y") // a running command has the keyboard
+	g.typed()
+	if len(g.sparks.items) != 0 {
+		t.Fatal("keys sent to a running program should not spark")
+	}
+}
