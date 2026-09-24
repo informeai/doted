@@ -131,18 +131,24 @@ Comandos que prendem o terminal (servidores, watchers, builds longos) podem ir p
 
 Cada job guarda a própria saída desde o início, inclusive o que imprimiu enquanto estava em background, e a barra de status mostra quantos jobs estão rodando. Com a faixa de jobs ligada (o padrão), a tela principal fica limpa: o cartão mostra o número do job (`#2`, o mesmo do `fg 2`), e a linha do comando mostra `#2 in the background` e, no fim, o resultado. Com a faixa desligada, mensagens como `[2] running in background` e `[2] done` avisam na tela principal.
 
-**Faixa de jobs ao vivo**: cada job em background aparece como um cartão entre a saída e a linha de entrada, com o número do job e um nome curto (`dev` para `npm run dev`, `watch` para `make watch`), há quanto tempo roda e as últimas linhas da saída, atualizadas ao vivo. Não há layout para gerenciar: o cartão aparece quando o job vai para o background e some alguns segundos depois de ele terminar (20 segundos quando falha). A barra na borda esquerda e a bolinha mostram o estado: cor de destaque, pulsando, enquanto roda; verde quando termina bem; vermelho quando falha.
+**Faixa de jobs ao vivo**: cada job em background aparece como um cartão no topo da janela, com o número do job e um nome curto (`dev` para `npm run dev`, `watch` para `make watch`), há quanto tempo roda e as últimas linhas da saída, atualizadas ao vivo. Não há layout para gerenciar: o cartão desce do topo quando o job vai para o background e sai sozinho depois que ele termina. No fim do job, o cartão fica inteiro por um instante (com a borda se acendendo na cor do resultado) e depois se recolhe numa pílula com o resultado, como `✓ #3 build · 1.2s` ou `✗ #2 test · exit 1`. A pílula fica até completar 6 segundos do fim (20 quando o job falha) e então sobe e sai pelo topo. Os cartões deslizam até o seu lugar em vez de pular: um novo cresce no espaço enquanto os outros abrem caminho, e os vizinhos ocupam aos poucos o lugar de um que sai. Clicar na pílula também abre o job. A bolinha mostra o estado: cor de destaque, pulsando, enquanto roda; verde quando termina bem; vermelho quando falha.
+
+Os cartões têm cara de cartão: ficam sobre uma sombra suave, com um brilho discreto na borda de cima, e sobem um pouco sob o mouse. A borda conta o que está acontecendo: enquanto chega saída nova, um feixe de luz na cor de destaque percorre o contorno, e some quando o job fica quieto; quando o job imprime erros, o feixe fica vermelho e a borda pulsa; quando o job termina, a borda se acende numa volta completa, verde ou vermelha, e depois volta ao normal. Com `[animation] enabled = false`, a borda fica parada.
 
 Os cartões leem a saída enquanto ela chega:
 
 - uma linha que parece erro (`error`, `FAIL`, `panic`, `fatal`, `Traceback`) deixa o cartão vermelho, com um brilho que pisca uma vez, e aparece em vermelho no cartão; uma linha de sucesso depois (`ok`, `PASS`, `ready`, `compiled`), como num watcher que volta a passar, desfaz isso;
 - a primeira URL local que o job imprime (`http://localhost:5173/`, típica de servidores de desenvolvimento) vira um link no cartão.
 
-Clicar num cartão, ou Ctrl+1 a Ctrl+9, abre a visão completa do job. Também dá para controlar o job sem abri-lo. Com o mouse sobre o cartão, aparecem três ações:
+Clicar num cartão, ou Ctrl+1 a Ctrl+9, abre a visão completa do job. O número do atalho é o número do job (o `#3` do cartão, o mesmo do `fg 3`), não a posição na tela, então funciona mesmo com o cartão fora de vista.
+
+Quando os cartões não cabem, a faixa primeiro recolhe os jobs quietos (sem saída há mais de 10 segundos) em cartões de uma linha, como `● #2 worker · 12m`; os que estão ativos, com erro, selecionados ou recebendo o teclado continuam inteiros. Se ainda assim não couber, a faixa vira um carrossel: setas nas pontas mostram quantos cartões estão fora de vista de cada lado (`‹ 2`, `3 ›`), e clicar nelas ou usar a roda do mouse sobre a faixa rola, com animação. Sem interferência, a faixa fica nos cartões mais novos.
+
+Pelo teclado, **Alt+← / Alt+→** selecionam um cartão (com borda de destaque) e rolam a faixa até ele. Com um cartão selecionado, ←/→ continuam andando entre eles, **Enter** abre o job, **Alt+S** envia para ele, **Alt+R** reinicia, **Alt+.** para e **Esc** tira a seleção. Qualquer outra tecla também tira a seleção e segue para o shell normalmente. Também dá para controlar o job sem abri-lo. Com o mouse sobre o cartão, aparecem três ações:
 
 - **restart** para o job e, quando ele termina (para um servidor liberar a porta), roda o mesmo comando de novo no mesmo lugar da faixa;
 - **stop** envia Ctrl+C; se o job não parar, o botão vira **kill** por alguns segundos e um segundo clique o mata;
-- **send** (ou Alt+1 a Alt+9) aponta a linha de entrada para o job: o prompt mostra `→ dev ›`, o cartão ganha uma borda na cor de destaque e mais linhas, e o que você digita vai para ele, sem sair da tela principal. Se o job lê uma linha por vez (um `read`, uma pergunta `y/n`, o `rs` do nodemon), você edita a linha no doted e o Enter a envia; se ele lê tecla a tecla (o `r` e o `q` do Vite, o `a` e o `p` do Jest e do Vitest, um REPL), cada tecla vai na hora. O doted descobre sozinho qual é o caso pelo modo do terminal do job. Esc devolve a linha ao shell, com o que você tinha digitado antes; se o job terminar, ela volta sozinha. Quando não cabem todos, os mais recentes aparecem e os outros ficam num cartão `+N` que abre a lista. Para desligar a faixa ou mudar quantas linhas cada cartão mostra, use `[jobs] strip` e `strip_lines`.
+- **send** (ou Alt+1 a Alt+9) aponta a linha de entrada para o job: o prompt mostra `→ dev ›`, o cartão ganha uma borda na cor de destaque e mais linhas, e o que você digita vai para ele, sem sair da tela principal. Se o job lê uma linha por vez (um `read`, uma pergunta `y/n`, o `rs` do nodemon), você edita a linha no doted e o Enter a envia; se ele lê tecla a tecla (o `r` e o `q` do Vite, o `a` e o `p` do Jest e do Vitest, um REPL), cada tecla vai na hora. O doted descobre sozinho qual é o caso pelo modo do terminal do job. Esc devolve a linha ao shell, com o que você tinha digitado antes; se o job terminar, ela volta sozinha. Para desligar a faixa ou mudar quantas linhas cada cartão mostra, use `[jobs] strip` e `strip_lines`.
 
 **Lista de jobs** (Ctrl+T ou `jobs`): mostra cada job com status, tempo e a última linha de saída.
 
@@ -207,7 +213,7 @@ EDITOR = "nvim"
 | `[scrollback]` | `lines` |
 | `[history]` | `save` (guardar os comandos entre sessões), `lines` |
 | `[clipboard]` | `system` (copiar e colar pela área de transferência do sistema; com `false`, fica tudo dentro do doted) |
-| `[jobs]` | `strip` (a faixa de jobs ao vivo acima da entrada), `strip_lines` (quantas linhas cada cartão mostra; padrão 2) |
+| `[jobs]` | `strip` (a faixa de jobs ao vivo no topo da janela), `strip_lines` (quantas linhas cada cartão mostra; padrão 2) |
 | `[links]` | `editor` (comando que abre um arquivo clicado, com `{file}`, `{line}` e `{col}`; por exemplo `"zed {file}:{line}:{col}"`) |
 | `[notify]` | `enabled`, `after_seconds` (quanto um comando precisa durar para notificar; padrão 10) |
 | `[status]` | `context` (branch do git com os arquivos alterados e duração do último comando na barra de status) |
@@ -281,7 +287,10 @@ internal/
     gitlogo.go           logo do Git desenhado a partir do SVG oficial
     gitanim.go           animações do branch: rolagem, giro do logo, faíscas e fade
     gitdelete.go         animação ao apagar branches e tags
-    strip.go             faixa de jobs ao vivo acima da entrada
+    strip.go             faixa de jobs ao vivo no topo da janela
+    cardborder.go        sombra e bordas animadas dos cartões
+    cardlife.go          entrada, pílula de resultado, saída, mini cartões e carrossel
+    stripnav.go          seleção de cartões e atalhos pelo número do job
     jobcontrol.go        restart, stop e enviar entrada aos jobs pelos cartões
   config/                arquivo TOML: padrões (default.toml), validação e watcher
   fonts/                 resolução da fonte por nome ou arquivo, com variantes

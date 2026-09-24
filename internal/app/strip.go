@@ -17,7 +17,7 @@ import (
 	"github.com/informeai/doted/internal/terminal"
 )
 
-// The job strip shows each background job as a live card above the input:
+// The job strip shows each background job as a live card at the top:
 // its number, a short name, how long it has run and its last lines of
 // output. There's
 // no layout to manage: a card shows up when a job goes to the background
@@ -36,7 +36,6 @@ const (
 	stripEnter      = 220 * time.Millisecond
 	stripLingerOK   = 6 * time.Second  // a finished card stays this long
 	stripLingerFail = 20 * time.Second // longer when it failed
-	stripFadeOut    = 600 * time.Millisecond
 	stripFlash      = 700 * time.Millisecond
 )
 
@@ -55,6 +54,16 @@ type jobWatch struct {
 	flashAt time.Time
 	url     string
 	shownAt time.Time
+
+	activityAt time.Time // when output last came in; see cardborder.go
+	lastSig    [2]int    // the newest line's seq and length, to notice output
+
+	// Where its card was drawn, as it moves to its slot, and how far it has
+	// shrunk to one line (towards miniTarget); see cardlife.go.
+	x, w       float64
+	placed     bool
+	mini       float64
+	miniTarget float64
 
 	// Driving it from its card; see jobcontrol.go.
 	restarting bool      // it was killed to run again
@@ -83,6 +92,9 @@ func (g *Game) watchJobs(now time.Time) {
 		out := j.Output
 		if out.Len() == 0 {
 			continue
+		}
+		if sig := [2]int{out.Seq(out.Len() - 1), len(out.At(out.Len() - 1).Cells)}; sig != w.lastSig {
+			w.lastSig, w.activityAt = sig, now
 		}
 		// The newest line may still be written to, until the job ends.
 		end := out.Seq(out.Len() - 1)
@@ -135,15 +147,6 @@ func (g *Game) linger(j *jobs.Job) time.Duration {
 	return stripLingerOK
 }
 
-// stripHeight is how tall the strip is now, 0 without cards.
-func (g *Game) stripHeight(now time.Time) float64 {
-	if len(g.stripJobs(now)) == 0 || g.faces == nil {
-		return 0
-	}
-	f := g.faces
-	return float64(1+g.stripLines(now))*f.lineH + f.lineH/2
-}
-
 // stripLines is how many lines of output the strip's cards have room for:
 // more while one of them is being sent to.
 func (g *Game) stripLines(now time.Time) int {
@@ -158,9 +161,10 @@ func (g *Game) stripLines(now time.Time) int {
 // stripHit is a clickable spot of the strip in the last frame.
 type stripHit struct {
 	x0, y0, x1, y1 float64
-	job            *jobs.Job // opens it; nil for the "+N" card
+	job            *jobs.Job // opens it
 	url            string    // opens it instead, when set
 	action         string    // or does this to it: restart, stop, send
+	scroll         int       // or scrolls the strip that way (a scroll arrow)
 }
 
 func (g *Game) stripHitAt(x, y float64) (stripHit, bool) {
@@ -185,11 +189,23 @@ func (g *Game) handleStripMouse(x, y float64) bool {
 	if !ok || g.panel.open {
 		return false
 	}
+	// The wheel over the strip scrolls it sideways.
+	if dx, dy := ebiten.Wheel(); (dx != 0 || dy != 0) && g.faces != nil {
+		d := dx
+		if d == 0 {
+			d = dy
+		}
+		g.stripScrollTo -= d * 4 * g.faces.cellW
+		g.stripScrolledAway = g.stripScrollTo < g.stripMaxScroll-1
+		g.wheelTaken = true
+	}
 	g.setCursorShapeTo(ebiten.CursorShapePointer)
 	if !inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		return true
 	}
 	switch {
+	case h.scroll != 0:
+		g.scrollStrip(h.scroll)
 	case h.url != "":
 		g.openLink(link{url: h.url})
 	case h.action == "restart":
@@ -200,8 +216,6 @@ func (g *Game) handleStripMouse(x, y float64) bool {
 		g.enterTarget(h.job)
 	case h.job != nil:
 		g.openJob(h.job)
-	default:
-		g.openPanel()
 	}
 	return true
 }
@@ -216,13 +230,13 @@ func (g *Game) jobNotice(format string, args ...any) {
 	g.notify(terminal.System, fmt.Sprintf(format, args...))
 }
 
-// openStripCard opens the job on card n (1-based), as Ctrl+n does.
+// openStripCard opens job #n, as Ctrl+n does.
 func (g *Game) openStripCard(n int) bool {
-	cards := g.stripJobs(time.Now())
-	if n < 1 || n > len(cards) {
+	j := g.stripJob(n)
+	if j == nil {
 		return false
 	}
-	g.openJob(cards[n-1])
+	g.openJob(j)
 	return true
 }
 
@@ -294,87 +308,15 @@ func (g *Game) jobColor(j *jobs.Job) color.RGBA {
 	return g.theme.ANSI[2]
 }
 
-// drawStrip draws the cards in the band from left to right whose top is y.
-func (g *Game) drawStrip(dst *ebiten.Image, left, right, y float64, now time.Time) {
-	g.stripHits = g.stripHits[:0]
-	cards := g.stripJobs(now)
-	if len(cards) == 0 {
-		return
-	}
-	f := g.faces
-	lines := g.stripLines(now)
-	h := float64(1+lines)*f.lineH + f.lineH/2
-	cols := int((right - left) / f.cellW)
-	fit := max(2, (cols+stripGapCols)/(stripMinCols+stripGapCols))
-	gap := float64(stripGapCols) * f.cellW
-	more, moreW := 0, 0.0
-	if len(cards) > fit {
-		// The newest cards show; the rest wait behind a "+N" card.
-		more, moreW = len(cards)-(fit-1), 6*f.cellW
-		cards = cards[len(cards)-(fit-1):]
-	}
-	avail := right - left - gap*float64(len(cards)-1)
-	if more > 0 {
-		avail -= moreW + gap
-	}
-	w := avail / float64(len(cards))
-	x := left
-	for _, j := range cards {
-		g.drawCard(dst, j, x, y, w, h, now)
-		x += w + gap
-	}
-	if more > 0 {
-		mw := right - x
-		fillRoundRect(dst, x, y, mw, h, f.lineH/3, mixRGBA(g.theme.Background, g.theme.Border, 0.5))
-		label := fmt.Sprintf("+%d", more)
-		g.drawText(dst, label, x+(mw-float64(len(label))*f.cellW)/2, y+(h-f.lineH)/2, g.theme.Muted, 1)
-		g.stripHits = append(g.stripHits, stripHit{x0: x, y0: y, x1: right, y1: y + h})
-	}
-}
+// drawStrip and drawCard live in cardlife.go, with how cards come and go.
 
-// drawCard draws job j's card in the box (x, y, w, h).
-func (g *Game) drawCard(dst *ebiten.Image, j *jobs.Job, x, y, w, h float64, now time.Time) {
+// drawCardContent draws the inside of job j's card, laid out for the box
+// at (x, y) of width w: the header with the actions under the mouse (when
+// hover) or the URL, and the last lines of output.
+func (g *Game) drawCardContent(dst *ebiten.Image, j *jobs.Job, wt *jobWatch, x, y, w float64, hover bool, alpha float64, now time.Time) {
 	f := g.faces
-	wt := g.watches[j]
-	if wt == nil {
-		wt = &jobWatch{name: jobName(j.Command)}
-	}
-	// Cards rise in when they show up and fade before they leave.
-	alpha, dy := 1.0, 0.0
-	if g.cfg.Animation.Enabled {
-		if age := now.Sub(wt.shownAt); age < stripEnter {
-			p := easeOutCubic(float64(age) / float64(stripEnter))
-			alpha, dy = p, (1-p)*f.lineH*0.6
-		}
-		if !j.Running() {
-			if left := g.linger(j) - now.Sub(j.Ended); left < stripFadeOut {
-				alpha *= math.Max(0, float64(left)/float64(stripFadeOut))
-			}
-		}
-	}
-	y += dy
 	mx, my := ebiten.CursorPosition()
-	hover := float64(mx) >= x && float64(mx) < x+w && float64(my) >= y && float64(my) < y+h
 	state := g.jobColor(j)
-
-	bg := mixRGBA(g.theme.Background, g.theme.Border, 0.45)
-	if hover {
-		bg = mixRGBA(g.theme.Background, g.theme.Border, 0.8)
-	}
-	r := f.lineH / 3
-	fillRoundRect(dst, x, y, w, h, r, scaleAlpha(bg, alpha))
-	// A new error flashes the card's outline.
-	if p := float64(now.Sub(wt.flashAt)) / float64(stripFlash); !wt.flashAt.IsZero() && p < 1 && g.cfg.Animation.Enabled {
-		glow := scaleAlpha(g.theme.Error, alpha*(1-p))
-		strokeRoundRect(dst, x, y, w, h, r, 2*g.scale, glow)
-	}
-	// The card being sent to is outlined in the accent color.
-	if j == g.target {
-		strokeRoundRect(dst, x, y, w, h, r, 1.5*g.scale, scaleAlpha(g.theme.Accent, alpha))
-	}
-	// The state's color runs down the card's left edge.
-	vector.FillRect(dst, float32(x+r/3), float32(y+r), float32(math.Max(2, 2*g.scale)), float32(h-2*r), scaleAlpha(state, alpha), true)
-
 	pad := f.cellW
 	cols := int((w - 2*pad) / f.cellW)
 	tx, ty := x+pad, y+f.lineH/4
@@ -469,7 +411,6 @@ func (g *Game) drawCard(dst *ebiten.Image, j *jobs.Job, x, y, w, h float64, now 
 		}
 		g.drawText(dst, truncate(strings.TrimSpace(line), cols), tx, ty+float64(i+1)*f.lineH, clr, a)
 	}
-	g.stripHits = append(g.stripHits, stripHit{x0: x, y0: y, x1: x + w, y1: y + h, job: j})
 }
 
 // roundRect is the outline of a rectangle with rounded corners of radius r.

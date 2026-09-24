@@ -43,7 +43,7 @@ func (g *Game) restartJob(j *jobs.Job) {
 	next.Listed = true
 	g.jobs.Replace(j, next)
 	// The card carries on: same name, no entrance.
-	g.watches[next] = &jobWatch{name: w.name, shownAt: w.shownAt}
+	g.watches[next] = &jobWatch{name: w.name, shownAt: w.shownAt, x: w.x, w: w.w, placed: w.placed}
 	delete(g.watches, j)
 	if g.target == j {
 		g.target = next
@@ -243,13 +243,13 @@ func altDigit() int {
 	return stripDigit()
 }
 
-// sendToCard points the input line at the job on card n (1-based), as
-// Alt+n does.
+// sendToCard points the input line at job #n, as Alt+n does; the strip
+// scrolls to its card.
 func (g *Game) sendToCard(n int) bool {
-	cards := g.stripJobs(time.Now())
-	if n < 1 || n > len(cards) {
+	j := g.stripJob(n)
+	if j == nil {
 		return false
 	}
-	g.enterTarget(cards[n-1])
+	g.enterTarget(j)
 	return true
 }

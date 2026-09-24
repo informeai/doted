@@ -96,6 +96,13 @@ type Game struct {
 	linkCache                  linkCache                   // the last link looked up under the mouse
 	watches                    map[*jobs.Job]*jobWatch     // what the job strip read from each job; see strip.go
 	stripHits                  []stripHit                  // the strip's clickable spots in the last frame
+	stripDrawn                 time.Time                   // when the strip was last drawn, to move cards smoothly
+	stripSel                   *jobs.Job                   // the card selected from the keyboard; see stripnav.go
+	stripScroll                float64                     // how far the strip is scrolled, moving towards stripScrollTo
+	stripScrollTo              float64                     //
+	stripMaxScroll             float64                     // how far it can scroll, as of the last frame
+	stripScrolledAway          bool                        // scrolled off the newest cards by hand
+	wheelTaken                 bool                        // the strip used this tick's mouse wheel
 	target                     *jobs.Job                   // the job the input line sends to; see jobcontrol.go
 	targetRaw                  bool                        // it reads a key at a time
 	stash                      string                      // the shell line put aside meanwhile
@@ -278,6 +285,7 @@ func (g *Game) Update() error {
 	switch {
 	case (!g.panel.open || g.panel.kind == panelHistory) && clipboardChord(ebiten.KeyF):
 		g.openFind()
+	case g.handleStripKeys(time.Now()):
 	case g.panel.open && g.panel.kind == panelFind:
 		g.handleFindKeys()
 	case g.panel.open && g.panel.kind == panelHelp:
@@ -525,9 +533,10 @@ func (g *Game) handleScrolling() {
 		g.scrollScreen(j) // the wheel goes to the program; PgUp/PgDn go as keys
 		return
 	}
-	if _, dy := ebiten.Wheel(); dy != 0 {
+	if _, dy := ebiten.Wheel(); dy != 0 && !g.wheelTaken {
 		g.scrollBy(int(dy * wheelRows))
 	}
+	g.wheelTaken = false
 	switch {
 	case repeating(ebiten.KeyPageUp):
 		g.scrollBy(g.outputRows - 1)

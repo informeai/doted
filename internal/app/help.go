@@ -39,8 +39,9 @@ var helpKeys = []struct{ keys, desc string }{
 	{"ctrl+c", "interrupt the running command, or discard the line"},
 	{"ctrl+b", "send the running command to the background"},
 	{"ctrl+t", "list background jobs"},
-	{"ctrl+1..9", "open the job on that card of the strip above the input"},
-	{"alt+1..9", "type to that card's job without opening it · esc returns"},
+	{"ctrl+1..9", "open job #1..#9 from its card at the top"},
+	{"alt+1..9", "type to job #1..#9 without opening it · esc returns"},
+	{"alt+← →", "select a card at the top: enter open · alt+s send · alt+r restart · alt+. stop"},
 	{"ctrl+l", "clear the screen"},
 	{"pgup · pgdn", "scroll the output"},
 }

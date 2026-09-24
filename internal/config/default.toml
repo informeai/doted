@@ -73,7 +73,7 @@ system = true
 editor = ""
 
 [jobs]
-# Show background jobs as live cards above the input, each with its last
+# Show background jobs as live cards at the top, each with its last
 # lines of output. A card turns red when its job prints an error, shows the
 # local URL it serves, and opens the job when clicked (or with ctrl+1..9).
 strip = true

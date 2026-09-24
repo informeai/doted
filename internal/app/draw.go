@@ -101,13 +101,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	inputTop := lowerRule - gap - float64(len(inputRows))*f.lineH
 	upperRule := inputTop - gap
 	outputBottom := upperRule - gap
-	// The job strip sits between the output and the input.
-	stripTop := outputBottom
+	// The job strip sits at the top; the output starts below it, past the
+	// cards' shadows.
+	outputTop := pad
 	if sh := g.stripHeight(now); sh > 0 {
-		stripTop = outputBottom - sh
-		outputBottom = stripTop - gap
+		outputTop = pad + sh + 2*gap
 	}
-	g.outputRows = max(1, int((outputBottom-pad)/f.lineH))
+	g.outputRows = max(1, int((outputBottom-outputTop)/f.lineH))
 
 	sb, jobCursor := g.scrollback, -1
 	switch {
@@ -119,15 +119,15 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	case g.attached != nil:
 		jobCursor = g.parser.Col()
 	}
-	g.outTop, g.outBottom, g.outLeft = pad, outputBottom, pad
+	g.outTop, g.outBottom, g.outLeft = outputTop, outputBottom, pad
 	if sj := g.screenJob(); sj != nil {
 		g.rows = g.rows[:0]
 		g.drawScreen(screen, sj, pad, outputBottom-float64(sj.Screen().Height())*f.lineH, now)
 	} else {
-		g.drawScrollback(screen, sb, jobCursor, pad, outputBottom, now)
+		g.drawScrollback(screen, sb, jobCursor, outputTop, outputBottom, now)
 		g.drawLinkHover(screen)
 	}
-	g.drawStrip(screen, pad, w-pad, stripTop, now)
+	g.drawStrip(screen, pad, w-pad, pad, now)
 	switch {
 	case g.panel.open && g.panel.kind == panelHelp:
 		g.drawHelpPanel(screen, pad, w-pad, upperRule-gap)
@@ -599,6 +599,8 @@ func (g *Game) statusHint(now time.Time) (hint string, spinner bool) {
 	switch {
 	case g.flashText != "" && now.Before(g.flashUntil):
 		hint = g.flashText
+	case g.stripSel != nil:
+		hint = g.selectionHint()
 	case g.target != nil:
 		hint, spinner = "sending to "+g.watchOf(g.target).name+" · esc returns to the shell", true
 	case g.scroll > 0:

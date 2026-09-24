@@ -114,3 +114,24 @@ func TestStripKeepsTheOutputClean(t *testing.T) {
 		t.Fatalf("block = %+v", b)
 	}
 }
+
+func TestStripNoticesActivity(t *testing.T) {
+	g := newTestGame(t)
+	run(g, "echo one; read _; echo two; sleep 30 &")
+	j := g.jobs.Listed()[0]
+	tickUntil(t, g, func() bool {
+		g.watchJobs(time.Now())
+		w := g.watches[j]
+		return w != nil && !w.activityAt.IsZero()
+	})
+	first := g.watches[j].activityAt
+	// No new output: the activity stays where it was.
+	time.Sleep(20 * time.Millisecond)
+	tick(g)
+	g.watchJobs(time.Now())
+	if !g.watches[j].activityAt.Equal(first) {
+		t.Fatal("activity moved without new output")
+	}
+	j.Write([]byte("\r"))
+	tickUntil(t, g, func() bool { g.watchJobs(time.Now()); return g.watches[j].activityAt.After(first) })
+}
