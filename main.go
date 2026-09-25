@@ -35,6 +35,7 @@ func main() {
 		return
 	}
 
+	app.Version = version
 	settings, err := app.LoadSettings(*configPath)
 	if err != nil {
 		settings = app.DefaultSettings()

@@ -111,6 +111,10 @@ Renomear um branch (`git branch -m`) usa a animação de checkout, não a de rem
 
 Quando um comando que levou pelo menos 10 segundos termina com o doted em segundo plano (outra janela em foco), o sistema mostra uma notificação com o resultado e o comando. No macOS ela vem pelo `osascript`, no Linux pelo `notify-send` e no Windows pelo PowerShell.
 
+### Aviso de nova versão
+
+Uma vez por dia, em segundo plano, o doted pergunta ao GitHub qual é a última release. Se houver uma mais nova que a instalada, uma linha na saída avisa, por exemplo `doted 1.0.3 is out (this is 1.0.2) · brew upgrade doted`, e a barra de status lembra `doted 1.0.3 is available` enquanto não há outra coisa a mostrar. Quem instalou pelo Homebrew vê o `brew upgrade doted`; nos outros casos, o link da página de releases. A resposta fica guardada em `~/.local/state/doted/update.json` (ou em `$XDG_STATE_HOME/doted`), então abrir o doted várias vezes no dia não consulta de novo. Sem rede, ele tenta outra vez no dia seguinte. Builds locais (`dev`) nunca consultam. Para desligar, use `[update] check = false`.
+
 ### Comandos internos
 
 Digite `help` para ver a lista abaixo e os atalhos dentro do próprio doted (a barra de status lembra disso). Na lista, ↑/↓ seleciona um comando, Enter coloca ele no prompt para você completar e executar, e Esc fecha.
@@ -225,6 +229,7 @@ EDITOR = "nvim"
 | `[links]` | `editor` (comando que abre um arquivo clicado, com `{file}`, `{line}` e `{col}`; por exemplo `"zed {file}:{line}:{col}"`) |
 | `[notify]` | `enabled`, `after_seconds` (quanto um comando precisa durar para notificar; padrão 10) |
 | `[status]` | `context` (branch do git com os arquivos alterados e duração do último comando na barra de status) |
+| `[update]` | `check` (procura uma release mais nova uma vez por dia e avisa na saída) |
 | `[shell]` | `program`, `[shell.env]` |
 | `[colors]` | `background`, `foreground`, `muted`, `accent`, `error`, `border`, `cursor` |
 | `[colors.normal]` / `[colors.bright]` | `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white` |
@@ -306,6 +311,7 @@ internal/
   fonts/                 resolução da fonte por nome ou arquivo, com variantes
   jobs/                  jobs em execução ou finalizados, cada um com sua saída
   notify/                notificações do sistema (osascript, notify-send, PowerShell)
+  update/                consulta da última release no GitHub, com cache diário
   shell/                 sessão (shell, ambiente, diretório) e processos em PTY
   terminal/              modelo sem dependência de UI
     parser.go            interpretação da saída do programa (texto, SGR, CR/BS, erase)

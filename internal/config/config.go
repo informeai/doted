@@ -35,6 +35,7 @@ type Config struct {
 	Jobs       Jobs       `toml:"jobs"`
 	Notify     Notify     `toml:"notify"`
 	Status     Status     `toml:"status"`
+	Update     Update     `toml:"update"`
 	Colors     Colors     `toml:"colors"`
 }
 
@@ -69,6 +70,12 @@ type Status struct {
 	// Context shows the git branch with what changed and how long the last
 	// command took.
 	Context bool `toml:"context"`
+}
+
+type Update struct {
+	// Check looks for a newer release of doted once a day and says so in
+	// the output.
+	Check bool `toml:"check"`
 }
 
 type History struct {

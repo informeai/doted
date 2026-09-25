@@ -703,6 +703,8 @@ func (g *Game) statusHint(now time.Time) (hint string, spinner bool) {
 			hint = "tab completes"
 		} else if len(g.jobs.Listed()) > 0 {
 			hint = "ctrl+t for jobs"
+		} else if u := g.updateHint(); u != "" {
+			hint = u
 		} else {
 			hint = helpHint
 		}

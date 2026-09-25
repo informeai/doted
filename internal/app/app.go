@@ -37,6 +37,7 @@ const (
 
 type Game struct {
 	cfg        config.Config
+	update     updateState
 	theme      Theme
 	family     fonts.Family
 	configPath string
@@ -301,6 +302,7 @@ func (g *Game) Update() error {
 	g.jobs.Poll(time.Now(), g.handleJobEvent)
 	g.flushNotices()
 	g.watchJobs(time.Now())
+	g.watchUpdate(time.Now())
 	g.noticeClear()
 	g.tickNumber(time.Now())
 
