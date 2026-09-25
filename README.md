@@ -4,15 +4,7 @@ Emulador de terminal escrito em Go, renderizado com [Ebitengine](https://ebiteng
 
 O layout segue o estilo de um terminal de chat: você digita na caixa de entrada na parte de baixo e a saída dos comandos aparece acima dela, com a linha mais recente sempre encostada na entrada.
 
-```
- ...saída anterior
- > ls
- README.md  go.mod  internal  main.go
- ───────────────────────────────────────
- > git status█
- ───────────────────────────────────────
- ~/Projects/doted
-```
+![O doted em uso](doted.gif)
 
 ## Requisitos
 
