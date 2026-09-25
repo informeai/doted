@@ -32,6 +32,8 @@ type spark struct {
 	size         float64
 	light        bool       // a lighter spark among the accent ones
 	clr          color.RGBA // its own color, when set, instead of the accent
+	gravity      float64    // pulls it down, logical px per second²; see burstRain
+	drag         float64    // its own drag, when set, instead of sparkDrag
 }
 
 type sparks struct {
@@ -77,11 +79,12 @@ func (s *sparks) burstAt(n int, x, y float64) {
 
 // burstLine fires n sparks in clr from random points along the segment
 // from (x0, y) to (x1, y), in logical px, in directions between angle
-// from and to (radians; 0 points right, π/2 down).
-func (s *sparks) burstLine(n int, x0, x1, y, from, to float64, clr color.RGBA) {
+// from and to (radians; 0 points right, π/2 down), speed times as fast as
+// typing sparks.
+func (s *sparks) burstLine(n int, x0, x1, y, from, to, speed float64, clr color.RGBA) {
 	for range n {
 		angle := lerpF(from, to, s.rng.Float64())
-		speed := lerpF(sparkMinSpeed, sparkMaxSpeed, s.rng.Float64())
+		speed := speed * lerpF(sparkMinSpeed, sparkMaxSpeed, s.rng.Float64())
 		s.items = append(s.items, spark{
 			x:     lerpF(x0, x1, s.rng.Float64()),
 			y:     y,
@@ -98,15 +101,45 @@ func (s *sparks) burstLine(n int, x0, x1, y, from, to float64, clr color.RGBA) {
 	}
 }
 
+// burstRain fires n sparks in clr that fall like rain from random points
+// along the segment from (x0, y) to (x1, y), in logical px: a small push
+// down, then gravity takes them.
+func (s *sparks) burstRain(n int, x0, x1, y float64, clr color.RGBA) {
+	for range n {
+		angle := lerpF(math.Pi*0.38, math.Pi*0.62, s.rng.Float64())
+		speed := lerpF(40, 160, s.rng.Float64())
+		s.items = append(s.items, spark{
+			x:       lerpF(x0, x1, s.rng.Float64()),
+			y:       y - s.rng.Float64()*6,
+			vx:      math.Cos(angle) * speed,
+			vy:      math.Sin(angle) * speed,
+			life:    lerpF(0.9, 1.5, s.rng.Float64()),
+			size:    lerpF(sparkMinSize, sparkMaxSize*1.2, s.rng.Float64()),
+			light:   s.rng.Float64() < 0.3,
+			clr:     clr,
+			gravity: lerpF(500, 900, s.rng.Float64()),
+			drag:    0.6,
+		})
+	}
+	if over := len(s.items) - maxSparks; over > 0 {
+		s.items = s.items[over:]
+	}
+}
+
 // step advances every spark by dt seconds and drops the ones that faded.
 func (s *sparks) step(dt float64) {
-	drag := math.Exp(-sparkDrag * dt)
 	live := s.items[:0]
 	for _, p := range s.items {
 		p.age += dt
 		if p.age >= p.life {
 			continue
 		}
+		d := sparkDrag
+		if p.drag > 0 {
+			d = p.drag
+		}
+		drag := math.Exp(-d * dt)
+		p.vy += p.gravity * dt
 		p.x += p.vx * dt
 		p.y += p.vy * dt
 		p.vx *= drag

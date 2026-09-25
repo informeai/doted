@@ -94,7 +94,7 @@ func TestPromptText(t *testing.T) {
 func TestBurstLineFallsTheWayAsked(t *testing.T) {
 	s := newSparks(1)
 	red := color.RGBA{0xff, 0, 0, 0xff}
-	s.burstLine(30, 10, 110, 50, math.Pi*0.2, math.Pi*0.8, red)
+	s.burstLine(30, 10, 110, 50, math.Pi*0.2, math.Pi*0.8, 1, red)
 	if len(s.items) != 30 {
 		t.Fatalf("%d sparks", len(s.items))
 	}

@@ -50,6 +50,7 @@ type Scrollback struct {
 	lines   []Line
 	limit   int
 	dropped int // lines trimmed or cleared so far; see Seq
+	clears  int // see Clears
 }
 
 func NewScrollback(limit int) *Scrollback {
@@ -106,9 +107,16 @@ func (s *Scrollback) Len() int { return len(s.lines) }
 func (s *Scrollback) At(i int) Line { return s.lines[i] }
 
 func (s *Scrollback) Clear() {
+	if len(s.lines) > 0 {
+		s.clears++
+	}
 	s.dropped += len(s.lines)
 	s.lines = s.lines[:0]
 }
+
+// Clears counts the times the scrollback was cleared with something in it:
+// Ctrl+L, or a command like clear.
+func (s *Scrollback) Clears() int { return s.clears }
 
 // Seq is a number for the line at index i that stays the same while older
 // lines are trimmed or cleared, unlike its index. Selections hold on to it.

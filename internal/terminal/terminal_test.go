@@ -258,3 +258,16 @@ func TestScrollbackSeqSurvivesTrimmingAndClearing(t *testing.T) {
 		t.Fatalf("a line after Clear got seq %d, not after %d", s.Seq(0), last)
 	}
 }
+
+func TestScrollbackCountsClears(t *testing.T) {
+	sb := NewScrollback(0)
+	sb.Clear() // nothing to clear
+	if sb.Clears() != 0 {
+		t.Fatal("clearing an empty scrollback shouldn't count")
+	}
+	sb.Append(Output, "x", time.Now())
+	sb.Clear()
+	if sb.Clears() != 1 {
+		t.Fatalf("clears = %d", sb.Clears())
+	}
+}

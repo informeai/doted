@@ -111,7 +111,9 @@ type Game struct {
 	stripGroup                 groupCard                   // the card grouping the jobs past the first ones
 	numEntry                   numberEntry                 // a job number being typed with Ctrl or Alt; see stripnav.go
 	stripRoom                  float64                     // how tall a card may grow: down to the output's bottom
-	cardSparks                 *sparks                     // shed by cards as they leave, on screen in logical px
+	cardSparks                 *sparks                     // shed by cards as they leave and by a clear, on screen in logical px
+	clearSB                    *terminal.Scrollback        // what noticeClear watched last tick
+	clearCount                 int                         // and how many clears it had
 	float                      floatWindow                 // a full-screen job being sent to; see jobfloat.go
 	stripTop                   float64                     // where the strip was drawn last
 	target                     *jobs.Job                   // the job the input line sends to; see jobcontrol.go
@@ -299,6 +301,7 @@ func (g *Game) Update() error {
 	g.jobs.Poll(time.Now(), g.handleJobEvent)
 	g.flushNotices()
 	g.watchJobs(time.Now())
+	g.noticeClear()
 	g.tickNumber(time.Now())
 
 	switch {

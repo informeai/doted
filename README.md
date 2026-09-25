@@ -65,7 +65,7 @@ A emulação usa o [`charmbracelet/x/vt`](https://github.com/charmbracelet/x/tre
 | Ctrl+C | descarta a linha | interrompe o programa (SIGINT) |
 | Ctrl+B | — | manda o comando para o background |
 | Ctrl+T | abre a lista de jobs | — |
-| Ctrl+L | limpa a tela | envia ao programa |
+| Ctrl+L | limpa a tela (com uma chuva de faíscas caindo do topo, se havia algo nela) | envia ao programa |
 | Ctrl+D | sai (com a linha vazia) | envia EOF |
 | Ctrl+A / Ctrl+E | início / fim da linha | envia ao programa |
 | Ctrl+U / Ctrl+W | apaga até o início / a palavra anterior, guardando o texto apagado | envia ao programa |

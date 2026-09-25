@@ -3,6 +3,7 @@
 package app
 
 import (
+	"github.com/informeai/doted/internal/terminal"
 	"strings"
 	"testing"
 	"time"
@@ -290,5 +291,50 @@ func TestScrollToStartAndEnd(t *testing.T) {
 	g.scrollBy(1000) // can't go past the start
 	if g.scroll != max {
 		t.Fatalf("past the start: %d", g.scroll)
+	}
+}
+
+func TestClearShowersSparks(t *testing.T) {
+	g := newTestGame(t)
+	g.faces = newFaceSet(g.family, g.cfg.Font, 1)
+	g.width, g.scale, g.outLeft, g.outTop = 1000, 1, 14, 14
+	g.cfg.Animation.Enabled, g.cfg.Animation.Particles = true, true
+	sparks := func() int {
+		if g.cardSparks == nil {
+			return 0
+		}
+		return len(g.cardSparks.items)
+	}
+	g.noticeClear() // start watching
+
+	// Ctrl+L with something on screen.
+	g.scrollback.Append(terminal.Output, "something", time.Now())
+	g.scrollback.Clear()
+	g.noticeClear()
+	if sparks() == 0 {
+		t.Fatal("clearing the screen should shower sparks")
+	}
+	for _, p := range g.cardSparks.items {
+		if p.vy <= 0 || p.y > g.outTop || p.y < g.outTop-6 || p.gravity <= 0 {
+			t.Fatalf("a spark at y %.0f going %.0f; they should fall from the top", p.y, p.vy)
+		}
+	}
+	g.cardSparks.items = nil
+
+	// The clear command, through the terminal.
+	run(g, "clear")
+	tickUntil(t, g, func() bool { return g.attached == nil })
+	g.noticeClear()
+	if sparks() == 0 {
+		t.Fatal("the clear command should shower sparks too")
+	}
+	g.cardSparks.items = nil
+
+	// Nothing on screen: nothing to clear, no sparks.
+	g.scrollback.Clear()
+	g.scrollback.Clear()
+	g.noticeClear()
+	if sparks() != 0 {
+		t.Fatal("clearing an empty screen shouldn't spark")
 	}
 }

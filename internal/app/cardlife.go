@@ -594,7 +594,27 @@ func (g *Game) shedSparks(x0, x1, y float64, clr color.RGBA) {
 		g.cardSparks = newSparks(uint64(time.Now().UnixNano()))
 	}
 	n := min(64, max(28, int((x1-x0)/g.scale/4)))
-	g.cardSparks.burstLine(n, x0/g.scale, x1/g.scale, y/g.scale, math.Pi*0.2, math.Pi*0.8, clr)
+	g.cardSparks.burstLine(n, x0/g.scale, x1/g.scale, y/g.scale, math.Pi*0.2, math.Pi*0.8, 1, clr)
+}
+
+// noticeClear showers sparks down from the top of the output when what it
+// shows was just cleared, by Ctrl+L or a command like clear. Update calls it
+// every tick.
+func (g *Game) noticeClear() {
+	sb := g.visibleScrollback()
+	clears := sb.Clears()
+	fire := sb == g.clearSB && clears > g.clearCount
+	g.clearSB, g.clearCount = sb, clears
+	if !fire || g.faces == nil || !g.cfg.Animation.Enabled || !g.cfg.Animation.Particles {
+		return
+	}
+	if g.cardSparks == nil {
+		g.cardSparks = newSparks(uint64(time.Now().UnixNano()))
+	}
+	pad := g.cfg.Window.Padding * g.scale
+	x0, x1 := g.outLeft, float64(g.width)-pad
+	n := min(180, max(50, int((x1-x0)/g.scale/5)))
+	g.cardSparks.burstRain(n, x0/g.scale, x1/g.scale, g.outTop/g.scale, g.theme.Accent)
 }
 
 // drawPill draws a finished job's result in its pill at (x, y) of height h:
