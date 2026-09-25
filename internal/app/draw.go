@@ -630,6 +630,10 @@ func fillEllipse(dst *ebiten.Image, cx, cy, rx, ry float64, clr color.RGBA) {
 func (g *Game) drawStatus(dst *ebiten.Image, left, y, right float64, now time.Time) {
 	f := g.faces
 	hint, spinner := g.statusHint(now)
+	hintClr := g.theme.Muted
+	if u := g.updateHint(now); u != "" && hint == u {
+		hintClr = g.theme.ANSI[2] // a newer release is good news: green
+	}
 
 	// Keep the title readable on narrow windows: the hint gives way first.
 	const minTitle, spinnerCols = 12, 4
@@ -664,7 +668,7 @@ func (g *Game) drawStatus(dst *ebiten.Image, left, y, right float64, now time.Ti
 		return
 	}
 	x := right - f.cellW*float64(hintLen)
-	g.drawText(dst, hint, x, y, g.theme.Muted, 1)
+	g.drawText(dst, hint, x, y, hintClr, 1)
 	if spinner {
 		g.drawSpinner(dst, x-f.cellW*spinnerCols, y+f.lineH/2, now)
 	}
@@ -703,7 +707,7 @@ func (g *Game) statusHint(now time.Time) (hint string, spinner bool) {
 			hint = "tab completes"
 		} else if len(g.jobs.Listed()) > 0 {
 			hint = "ctrl+t for jobs"
-		} else if u := g.updateHint(); u != "" {
+		} else if u := g.updateHint(now); u != "" {
 			hint = u
 		} else {
 			hint = helpHint

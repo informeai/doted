@@ -113,7 +113,7 @@ Quando um comando que levou pelo menos 10 segundos termina com o doted em segund
 
 ### Aviso de nova versão
 
-Uma vez por dia, em segundo plano, o doted pergunta ao GitHub qual é a última release. Se houver uma mais nova que a instalada, uma linha na saída avisa, por exemplo `doted 1.0.3 is out (this is 1.0.2) · brew upgrade doted`, e a barra de status lembra `doted 1.0.3 is available` enquanto não há outra coisa a mostrar. Quem instalou pelo Homebrew vê o `brew upgrade doted`; nos outros casos, o link da página de releases. A resposta fica guardada em `~/.local/state/doted/update.json` (ou em `$XDG_STATE_HOME/doted`), então abrir o doted várias vezes no dia não consulta de novo. Sem rede, ele tenta outra vez no dia seguinte. Builds locais (`dev`) nunca consultam. Para desligar, use `[update] check = false`.
+Uma vez por dia, em segundo plano, o doted pergunta ao GitHub qual é a última release. Se houver uma mais nova que a instalada, uma linha na saída avisa, por exemplo `doted 1.0.3 is out (this is 1.0.2) · brew upgrade doted`, e a barra de status mostra, em verde, `doted 1.0.3 is available` por 30 segundos (se não houver outra coisa a mostrar). Quem instalou pelo Homebrew vê o `brew upgrade doted`; nos outros casos, o link da página de releases. A resposta fica guardada em `~/.local/state/doted/update.json` (ou em `$XDG_STATE_HOME/doted`), então abrir o doted várias vezes no dia não consulta de novo. Sem rede, ele tenta outra vez no dia seguinte. Builds locais (`dev`) nunca consultam. Para desligar, use `[update] check = false`.
 
 ### Comandos internos
 

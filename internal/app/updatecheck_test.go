@@ -30,8 +30,11 @@ func TestUpdateNotice(t *testing.T) {
 	if !strings.Contains(last, "doted 1.0.3 is out (this is 1.0.2)") {
 		t.Fatalf("notice = %q", last)
 	}
-	if got := g.statusHintText(); got != "doted 1.0.3 is available" {
+	if got := g.updateHint(now); got != "doted 1.0.3 is available" {
 		t.Fatalf("status hint = %q", got)
+	}
+	if got := g.updateHint(now.Add(updateHintFor)); got != "" {
+		t.Fatalf("status hint after a while = %q", got)
 	}
 	// Not asked again within the day.
 	g.watchUpdate(now.Add(time.Hour))
@@ -47,9 +50,4 @@ func TestUpdateNotCheckedForDevBuilds(t *testing.T) {
 	if g.update.busy {
 		t.Fatal("a dev build started a check")
 	}
-}
-
-func (g *Game) statusHintText() string {
-	h, _ := g.statusHint(time.Now())
-	return h
 }

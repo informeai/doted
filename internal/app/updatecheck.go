@@ -12,8 +12,11 @@ import (
 // Once a day doted asks GitHub whether a newer release is out, in the
 // background; when there is one, a line in the output says so and how to
 // upgrade (brew upgrade when Homebrew installed it), and the status line
-// keeps reminding while idle. Builds that aren't a release ("dev") never
+// shows it in green for a little while. Builds that aren't a release ("dev") never
 // ask, and [update] check = false turns it off.
+
+// updateHintFor is how long the status line shows a newer release.
+const updateHintFor = 30 * time.Second
 
 // Version is doted's version, set by main from the build.
 var Version = "dev"
@@ -22,7 +25,8 @@ type updateState struct {
 	results   chan string // the latest version, or "" when it couldn't be found
 	busy      bool
 	lastRun   time.Time
-	available string // a newer version than this one, once found
+	available string    // a newer version than this one, once found
+	foundAt   time.Time // when it was found
 	fetch     update.Fetcher
 	path      string
 }
@@ -37,7 +41,7 @@ func (g *Game) watchUpdate(now time.Time) {
 	case latest := <-u.results:
 		u.busy = false
 		if update.Newer(Version, latest) && latest != u.available {
-			u.available = latest
+			u.available, u.foundAt = latest, now
 			exe, _ := os.Executable()
 			g.notify(terminal.System, "doted "+latest+" is out (this is "+Version+") · "+update.HowTo(exe))
 		}
@@ -66,9 +70,10 @@ func (g *Game) watchUpdate(now time.Time) {
 	}()
 }
 
-// updateHint is the status line's reminder of a newer release.
-func (g *Game) updateHint() string {
-	if g.update.available == "" || !g.cfg.Update.Check {
+// updateHint is the status line's news of a newer release, for a little
+// while after it was found.
+func (g *Game) updateHint(now time.Time) string {
+	if g.update.available == "" || !g.cfg.Update.Check || now.Sub(g.update.foundAt) >= updateHintFor {
 		return ""
 	}
 	return "doted " + g.update.available + " is available"
