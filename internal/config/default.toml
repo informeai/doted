@@ -96,6 +96,27 @@ after_seconds = 10
 # in the status line.
 context = true
 
+[explain]
+# "explain" asks an AI tool why the last command failed and how to fix it;
+# "explain #3" asks about job 3, and a tool's name after it picks the tool
+# for that time: "explain #3 claude". The tool runs in the current directory and
+# gets the command, how it ended and the end of its output (secrets
+# masked); it may read the project's files, but not change them. Lines of
+# the answer starting with ▸ are commands: click one to put it on the
+# prompt.
+# The tool used when none is named: "claude" (Claude Code,
+# https://claude.com/claude-code) or "cursor" (Cursor's agent,
+# https://cursor.com/cli).
+tool = "claude"
+# The model tool uses (--model); empty picks one: haiku for claude, quick
+# and cheap ("sonnet" digs deeper), and the agent's own for cursor. Naming
+# another tool, as in "explain #3 cursor", uses that tool's.
+model = ""
+# What it answers in, like "pt-BR" or "English"; empty follows $LANG.
+language = ""
+# How many of the output's last lines it gets.
+lines = 150
+
 [update]
 # Look for a newer release of doted on GitHub once a day and say so in the
 # output, with how to upgrade.

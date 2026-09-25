@@ -124,10 +124,32 @@ Digite `help` para ver a lista abaixo e os atalhos dentro do próprio doted (a b
 - `jobs`: abre a lista de jobs
 - `fg [n]`: abre o job `n` (ou o mais recente); também aceita `fg %n`
 - `help`: lista os comandos e atalhos
+- `explain [#n] [ferramenta]`: pergunta a uma IA por que o último comando (ou o job `n`) falhou e como corrigir (veja abaixo)
 - `pipeline [nome]`: roda um pipeline do `pipeline.toml`, ou lista os pipelines (veja abaixo)
 - `pipeline record <nome>` / `pipeline stop`: grava os comandos que você roda como um pipeline
 - `pipeline remove <nome>`: tira um pipeline do `pipeline.toml`
 - `exit` / `quit`: fecha o doted. Se houver jobs rodando, pede confirmação (repita o comando para matá-los e sair)
+
+### Explain
+
+Quando um comando falha, `explain` pergunta a uma ferramenta de IA de linha de comando ([Claude Code](https://claude.com/claude-code) ou o [agent do Cursor](https://cursor.com/cli)) por que ele falhou e como corrigir, sem sair do terminal:
+
+- `explain` explica o último comando que falhou na tela principal.
+- `explain #3` (ou `explain 3`) explica o job 3, esteja rodando ou não: um servidor que caiu, um watcher imprimindo erros ou um pipeline. No caso do pipeline, o doted pega só o passo que falhou.
+- O último parâmetro escolhe a ferramenta de IA: `explain #6 claude` usa o `claude -p`, e `explain #6 cursor` usa o `agent -p` do Cursor. Sem ele, vale o `[explain] tool` do config. Funciona sem o job também: `explain cursor`. Outras, como o Ollama, podem entrar depois.
+- Com o mouse sobre a linha de um comando que falhou, aparece a ação **explain**, ao lado de **copy** e **rerun**.
+
+O doted envia à ferramenta o comando, como ele terminou (`exit 1`, `killed`, "ainda rodando, imprimindo erros"), o diretório, o branch, o sistema e as últimas 150 linhas da saída. Antes do envio, tokens e senhas que aparecem na saída são mascarados (chaves da AWS, `ghp_…`, `sk-…`, `Bearer …`, `DB_PASSWORD=…`, senhas em URLs). A ferramenta roda no diretório atual e pode **ler** os arquivos do projeto para achar a causa, mas não pode editar arquivos nem rodar comandos: o Claude Code só com as ferramentas de leitura (`--allowedTools Read,Grep,Glob`), e o `agent -p` do Cursor no modo de perguntas (`--mode ask`). Não precisa de chave de API: cada uma usa a própria conta, já logada.
+
+A resposta aparece como a saída de um comando comum, em poucas linhas e no idioma do sistema (`$LANG`). As linhas que começam com `▸` são comandos sugeridos e ficam destacadas. Um clique coloca o comando no prompt, e você confere e aperta Enter: o doted nunca executa nada sozinho. Como o explain é um comando, ele pode ir para o segundo plano com Ctrl+B e ganha um card como os outros jobs.
+
+```toml
+[explain]
+tool = "claude"   # a ferramenta quando nenhuma é dita: "claude" ou "cursor"
+model = ""        # --model da ferramenta acima; vazio usa haiku no claude e o padrão do agent no cursor
+language = ""     # "pt-BR", "English"...; vazio segue o $LANG
+lines = 150       # quantas linhas do fim da saída enviar
+```
 
 ### Pipelines
 
@@ -271,6 +293,7 @@ EDITOR = "nvim"
 | `[links]` | `editor` (comando que abre um arquivo clicado, com `{file}`, `{line}` e `{col}`; por exemplo `"zed {file}:{line}:{col}"`) |
 | `[notify]` | `enabled`, `after_seconds` (quanto um comando precisa durar para notificar; padrão 10) |
 | `[status]` | `context` (branch do git com os arquivos alterados e duração do último comando na barra de status) |
+| `[explain]` | `tool`, `model`, `language` e `lines` (veja [Explain](#explain)) |
 | `[update]` | `check` (procura uma release mais nova uma vez por dia e avisa na saída) |
 | `[shell]` | `program`, `[shell.env]` |
 | `[colors]` | `background`, `foreground`, `muted`, `accent`, `error`, `border`, `cursor` |
@@ -353,6 +376,7 @@ internal/
   fonts/                 resolução da fonte por nome ou arquivo, com variantes
   jobs/                  jobs em execução ou finalizados, cada um com sua saída
   notify/                notificações do sistema (osascript, notify-send, PowerShell)
+  explain/               contexto, máscara de segredos e ferramentas de IA do explain
   pipeline/              pipeline.toml: leitura, expansão dos passos e gravação
   update/                consulta da última release no GitHub, com cache diário
   shell/                 sessão (shell, ambiente, diretório) e processos em PTY

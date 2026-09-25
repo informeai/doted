@@ -39,6 +39,11 @@ func (g *Game) restartJob(j *jobs.Job) {
 	var err error
 	if p := g.pipes[j]; p != nil {
 		next, err = g.startPipeline(p.line, time.Now()) // pipeline.toml may have changed
+	} else if arg, ok := g.explains[j]; ok {
+		next, _, err = g.startExplain(arg, 0, time.Now())
+		if err == nil {
+			next.Listed = true
+		}
 	} else {
 		next, err = g.jobs.Start(g.session, j.Command, g.cols, g.outputRows, time.Now())
 	}

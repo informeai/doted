@@ -36,6 +36,7 @@ type Config struct {
 	Notify     Notify     `toml:"notify"`
 	Status     Status     `toml:"status"`
 	Update     Update     `toml:"update"`
+	Explain    Explain    `toml:"explain"`
 	Colors     Colors     `toml:"colors"`
 }
 
@@ -70,6 +71,18 @@ type Status struct {
 	// Context shows the git branch with what changed and how long the last
 	// command took.
 	Context bool `toml:"context"`
+}
+
+type Explain struct {
+	// Tool is the AI command line tool that explains when explain names
+	// none: "claude" (Claude Code) or "cursor" (Cursor's agent).
+	Tool string `toml:"tool"`
+	// Model is passed to Tool; empty is the tool's default.
+	Model string `toml:"model"`
+	// Language is what it answers in, like "pt-BR"; empty follows $LANG.
+	Language string `toml:"language"`
+	// Lines is how much of the output's end it gets.
+	Lines int `toml:"lines"`
 }
 
 type Update struct {

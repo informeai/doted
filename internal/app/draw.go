@@ -368,6 +368,7 @@ func (g *Game) drawScrollback(dst *ebiten.Image, sb *terminal.Scrollback, cursor
 			}
 		}
 		alpha, dy := g.entrance(now.Sub(line.At))
+		_, suggestion := g.suggestionAt(sb, i)
 		for j := len(rows) - 1; j >= 0 && y-f.lineH >= top; j-- {
 			if skip > 0 {
 				skip--
@@ -378,6 +379,9 @@ func (g *Game) drawScrollback(dst *ebiten.Image, sb *terminal.Scrollback, cursor
 			g.rows = append(g.rows, row)
 			g.drawRowSelection(dst, sb, row, len(line.Cells), pad, y+dy)
 			g.drawFindHits(dst, sb, row, pad, y+dy)
+			if suggestion {
+				g.drawSuggestion(dst, seq, pad, y+dy)
+			}
 			g.drawCells(dst, rows[j], pad, y+dy, line.Kind, alpha)
 			// Commands that were run keep the prompt bar they were typed at.
 			if j == 0 && line.Kind == terminal.Command && g.cfg.Prompt.Style == config.PromptBar {

@@ -24,7 +24,7 @@ const (
 
 // dotedBuiltins are the names runBuiltin handles.
 var dotedBuiltins = map[string]bool{
-	"jobs": true, "fg": true, "help": true, "exit": true, "quit": true, "pipeline": true,
+	"jobs": true, "fg": true, "help": true, "exit": true, "quit": true, "pipeline": true, "explain": true,
 }
 
 // lookupTTL is how long a lookup is trusted, so a program installed while

@@ -121,6 +121,9 @@ type Game struct {
 	pipes                      map[*jobs.Job]*pipelineJob  // the jobs running pipelines; see pipeline.go
 	pipeFailed                 map[string]int              // the step each pipeline last failed at
 	recording                  *pipelineRecording          // the pipeline being recorded
+	explains                   map[*jobs.Job]string        // jobs asking why something failed, and about what; see explain.go
+	explainSeqs                map[int]bool                // the blocks holding their answers
+	explainSeq                 int                         // the block the next explain is about, when picked from its line
 	targetRaw                  bool                        // it reads a key at a time
 	stash                      string                      // the shell line put aside meanwhile
 	opener                     func(*Game, []string) error // starts the program that opens a link
@@ -372,6 +375,7 @@ func (g *Game) handleJobEvent(j *jobs.Job, ev shell.Event) {
 		g.endBlock(j, time.Now())
 		// Once the main view is free of it: the next step may take it.
 		defer g.pipelineJobDone(j)
+		defer g.explainJobDone(j)
 	}
 	if j == g.attached {
 		if !ev.Done {

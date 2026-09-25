@@ -41,6 +41,8 @@ const (
 	actToggle actionKind = iota // fold or unfold the output
 	actCopy
 	actRerun
+	actExplain // ask why it failed; see explain.go
+	actSuggest // put an answer's command on the prompt
 )
 
 // blockAction is a clickable spot drawn in the last frame.
@@ -183,6 +185,10 @@ func (g *Game) blockOutput(seq int) string {
 
 // runBlockAction does what a click on a block's spot asks.
 func (g *Game) runBlockAction(a blockAction) {
+	if a.kind == actSuggest {
+		g.useSuggestion(a.seq)
+		return
+	}
 	b := g.blocks[a.seq]
 	if b == nil {
 		return
@@ -200,6 +206,8 @@ func (g *Game) runBlockAction(a blockAction) {
 		g.clipboard = text
 		g.writeSystemClipboard(text)
 		g.flash("copied the output of " + truncate(b.cmd, 30))
+	case actExplain:
+		g.explainBlockAction(a.seq)
 	case actRerun:
 		if g.attached != nil || g.viewing != nil {
 			g.flash("a command is running · wait or ctrl+b first")
@@ -233,6 +241,12 @@ func (g *Game) drawBlockHeader(dst *ebiten.Image, b *block, seq, cmdLen int, x, 
 			text string
 			kind actionKind
 		}{{"copy", actCopy}, {"rerun", actRerun}}
+		if !b.running() && (b.status != "" || b.killed) && !g.explainSeqs[seq] {
+			labels = append(labels, struct {
+				text string
+				kind actionKind
+			}{"explain", actExplain})
+		}
 		width := 0
 		for i, l := range labels {
 			width += utf8.RuneCountInString(l.text)

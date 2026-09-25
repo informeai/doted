@@ -73,6 +73,8 @@ func (g *Game) runBuiltin(cmd string) bool {
 		g.fg(arg)
 	case "pipeline":
 		g.runPipeline(arg, time.Now())
+	case "explain":
+		g.runExplain(arg, time.Now())
 	default:
 		return false
 	}
