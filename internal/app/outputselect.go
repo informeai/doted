@@ -84,8 +84,15 @@ func (s *outputSelection) cellsIn(seq, n int) (from, to int, ok bool) {
 // handleMouse selects output with the mouse and keeps the pointer shaped for
 // text over it.
 func (g *Game) handleMouse(now time.Time) {
+	mx, my := ebiten.CursorPosition()
+	x, y := float64(mx), float64(my)
+	// A full-screen program's screen, in the output area or the floating
+	// window, is selected by its cells; see gridselect.go.
+	if g.handleGridMouse(x, y, now) {
+		g.outSel.clear()
+		return
+	}
 	if g.screenJob() != nil {
-		// A full-screen program owns the output area.
 		g.outSel.clear()
 		g.setCursorShape(false)
 		return
@@ -94,8 +101,6 @@ func (g *Game) handleMouse(now time.Time) {
 	if g.outSel.sb != nil && g.outSel.sb != sb {
 		g.outSel.clear() // the view changed under the selection
 	}
-	mx, my := ebiten.CursorPosition()
-	x, y := float64(mx), float64(my)
 	if !g.outSel.dragging && g.handleStripMouse(x, y) {
 		return
 	}

@@ -241,3 +241,18 @@ func TestStringOf(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestParserMouseTracking(t *testing.T) {
+	p, _ := run()
+	sb := NewScrollback(0)
+	p = NewParser(sb)
+	p.Begin()
+	p.Write([]byte("\x1b[?1049h\x1b[?1000h\x1b[?1006h"), time.Now())
+	if !p.MouseTracking || !p.AltScreen {
+		t.Fatal("vim with mouse=a asks for mouse events")
+	}
+	p.Write([]byte("\x1b[?1000l"), time.Now())
+	if p.MouseTracking {
+		t.Fatal("mouse events should stop when the program says so")
+	}
+}

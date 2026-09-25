@@ -43,7 +43,9 @@ var helpKeys = []struct{ keys, desc string }{
 	{"alt+number", "type to that job without opening it (more digits the same way) · esc returns"},
 	{"alt+← →", "select a card at the top, grouped ones too: enter open · alt+s send · alt+r restart · alt+. stop"},
 	{"ctrl+l", "clear the screen"},
-	{"pgup · pgdn", "scroll the output"},
+	{"pgup · pgdn", "scroll the output a screen at a time (fn+↑↓ on a MacBook)"},
+	{"shift+↑↓", "scroll the output a row at a time"},
+	{"cmd+home · end", "scroll to the start or the end (ctrl+home/end on linux/windows; fn+cmd+←→ on a MacBook)"},
 }
 
 func (g *Game) openHelp() {

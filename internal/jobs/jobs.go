@@ -111,6 +111,13 @@ func (j *Job) State() string { return j.proc.State() }
 
 func (j *Job) Kill() { j.proc.Kill() }
 
+// MouseTracking reports whether the job's program asked for mouse events.
+func (j *Job) MouseTracking() bool { return j.parser.MouseTracking }
+
+// SendMouse sends a mouse event to the job's program, encoded as it asked;
+// nothing is sent unless it asked for mouse events.
+func (j *Job) SendMouse(m uv.MouseEvent) { j.screen.SendMouse(m) }
+
 // Interrupt sends Ctrl+C to the job's terminal, which interrupts the program
 // the way pressing it would.
 func (j *Job) Interrupt() { j.Write([]byte{0x03}) }

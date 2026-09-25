@@ -53,7 +53,7 @@ Caracteres largos, como chinês, japonês, coreano e emoji, ocupam duas colunas,
 
 ### Programas de tela cheia
 
-`vim`, `less`, `htop`, `man`, `nano` e outros programas que ocupam a tela inteira funcionam: quando um deles entra na tela alternativa, a área de saída passa a mostrar a grade completa do terminal, com cores (na paleta do tema), cursor e movimentação livre, e volta para o histórico quando ele sai, sem deixar o conteúdo da tela no histórico. Enquanto isso, todas as teclas vão para o programa, inclusive Esc, Ctrl+B, PgUp/PgDn, F1–F12 e Alt, codificadas nos modos que ele pedir, e a roda do mouse vira setas. Com isso, `git log` e `man` voltam a usar o `less` como pager.
+`vim`, `less`, `htop`, `man`, `nano` e outros programas que ocupam a tela inteira funcionam: quando um deles entra na tela alternativa, a área de saída passa a mostrar a grade completa do terminal, com cores (na paleta do tema), cursor e movimentação livre, e volta para o histórico quando ele sai, sem deixar o conteúdo da tela no histórico. Enquanto isso, todas as teclas vão para o programa, inclusive Esc, Ctrl+B, PgUp/PgDn, F1–F12 e Alt, codificadas nos modos que ele pedir, e a roda do mouse (ou o trackpad) vai para o programa: como eventos de roda na posição do ponteiro quando ele pede o mouse (vim com `mouse=a`, htop), ou como setas nos demais (less, `man`, `git log`). Com isso, `git log` e `man` voltam a usar o `less` como pager. A tela do programa também pode ser selecionada com o mouse (arrastar, duplo clique para uma palavra, triplo clique para uma linha), na área de saída, na visão do job ou na janela flutuante do modo de envio, e Cmd+C (Ctrl+Shift+C no Linux e Windows) copia a seleção sem que o atalho chegue ao programa; a seleção sai quando uma tecla vai para ele.
 
 A emulação usa o [`charmbracelet/x/vt`](https://github.com/charmbracelet/x/tree/main/vt), que também responde às perguntas que esses programas fazem ao terminal (posição do cursor, tipo de terminal).
 
@@ -78,7 +78,9 @@ A emulação usa o [`charmbracelet/x/vt`](https://github.com/charmbracelet/x/tre
 | Ctrl+A / Ctrl+E | início / fim da linha | envia ao programa |
 | Ctrl+U / Ctrl+W | apaga até o início / a palavra anterior, guardando o texto apagado | envia ao programa |
 | Ctrl+Y | cola de volta o que o Ctrl+U/Ctrl+W apagou | envia ao programa |
-| PgUp / PgDn, roda do mouse | rola o histórico | rola o histórico |
+| PgUp / PgDn (Fn+↑/↓ no MacBook), roda do mouse | rola o histórico uma tela por vez | rola o histórico |
+| Shift+↑ / Shift+↓ | rola o histórico uma linha por vez | rola o histórico uma linha por vez |
+| Cmd+Home / Cmd+End (Ctrl+Home/End no Linux e Windows; Fn+Cmd+←/→ no MacBook) | vai ao início / ao fim do histórico | vai ao início / ao fim do histórico |
 
 Para copiar a saída de um comando, arraste o mouse sobre ela: o trecho ganha um fundo na cor de destaque, e arrastar além do topo ou da base rola o histórico. A seleção fica presa ao texto, então não se desloca quando chega saída nova; Esc ou um clique a desfazem. Copiar, recortar e colar usam a área de transferência do sistema, então o texto vai e vem entre o doted e outros apps (no macOS pelo `pbcopy`/`pbpaste`, no Linux pelo `wl-copy`/`wl-paste`, `xclip` ou `xsel`, e no Windows pela API do sistema). Ao colar na linha de entrada, quebras de linha viram espaços, então um colar nunca executa um comando. O Ctrl+Y, como no bash, cola de volta o que o Ctrl+U/Ctrl+W apagou, sem mexer na área do sistema. Se o sistema não responder (no Linux sem nenhuma dessas ferramentas, por exemplo), o doted usa a própria área e avisa. Ao copiar ou colar, a barra de status confirma a ação por um instante.
 
@@ -306,6 +308,7 @@ internal/
     cardlife.go          entrada, pílula de resultado, saída, mini cartões e carrossel
     stripnav.go          seleção de cartões e atalhos pelo número do job
     jobfloat.go          janela flutuante para enviar a jobs em tela cheia
+    gridselect.go        seleção com o mouse na tela de programas de tela cheia
     jobcontrol.go        restart, stop e enviar entrada aos jobs pelos cartões
   config/                arquivo TOML: padrões (default.toml), validação e watcher
   fonts/                 resolução da fonte por nome ou arquivo, com variantes

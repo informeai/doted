@@ -687,7 +687,7 @@ func (g *Game) statusHint(now time.Time) (hint string, spinner bool) {
 		}
 		hint, spinner = "sending to "+g.watchOf(g.target).name+" · "+back+" returns to the shell", true
 	case g.scroll > 0:
-		hint = "scrolled up · pgdn to return"
+		hint = "scrolled up · cmd+end to return"
 	case g.screenJob() != nil:
 		hint, spinner = "full screen · every key goes to the program", true
 	case g.viewing != nil && g.viewing.Running():

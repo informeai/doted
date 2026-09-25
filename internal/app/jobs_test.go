@@ -242,3 +242,53 @@ func TestLatePasteIsDropped(t *testing.T) {
 		t.Fatalf("a late paste landed in the input: %q", g.editor.Text())
 	}
 }
+
+func TestWheelScrollsTheJobView(t *testing.T) {
+	g := newTestGame(t)
+	g.outputRows, g.cols = 10, 80
+	run(g, "seq 1 100 &")
+	j := g.jobs.Listed()[0]
+	tickUntil(t, g, func() bool { return !j.Running() })
+	g.openJob(j)
+
+	// A trackpad's small steps, as they come: they add up to rows.
+	var acc float64
+	for range 10 {
+		if n := addWheel(&acc, 0.3); n != 0 {
+			g.scrollBy(n)
+		}
+	}
+	if g.scroll != 9 {
+		t.Fatalf("scrolled %d rows in the job view, want 9", g.scroll)
+	}
+	// And back down.
+	for range 10 {
+		if n := addWheel(&acc, -0.3); n != 0 {
+			g.scrollBy(n)
+		}
+	}
+	if g.scroll != 0 {
+		t.Fatalf("scrolled back to %d, want 0", g.scroll)
+	}
+}
+
+func TestScrollToStartAndEnd(t *testing.T) {
+	g := newTestGame(t)
+	g.outputRows, g.cols = 10, 80
+	run(g, "seq 1 50")
+	tickUntil(t, g, func() bool { return g.attached == nil })
+
+	g.scrollToStart()
+	max := g.totalRows(g.scrollback) - g.outputRows
+	if g.scroll != max || max <= 0 {
+		t.Fatalf("scrolled to %d, want the start at %d", g.scroll, max)
+	}
+	g.scrollBy(-1) // Shift+Down
+	if g.scroll != max-1 {
+		t.Fatalf("one row down: %d", g.scroll)
+	}
+	g.scrollBy(1000) // can't go past the start
+	if g.scroll != max {
+		t.Fatalf("past the start: %d", g.scroll)
+	}
+}

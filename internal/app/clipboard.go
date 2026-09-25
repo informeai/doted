@@ -78,7 +78,10 @@ func (g *Game) handleClipboardKeys() bool {
 // copySelection copies the text selected in the output, or else in the
 // input line.
 func (g *Game) copySelection() {
-	text := g.selectedOutput()
+	text := g.gridSelectedText()
+	if text == "" {
+		text = g.selectedOutput()
+	}
 	if text == "" {
 		text = g.editor.SelectedText()
 	}
@@ -176,7 +179,9 @@ func (g *Game) pasteText(target *jobs.Job, text string) {
 		return
 	}
 	if target != nil {
-		if !target.Running() || (target != g.attached && target != g.viewing) {
+		// Only into a job that still has the keyboard: the command running
+		// in the main view, the one being viewed, or the one being sent to.
+		if !target.Running() || (target != g.attached && target != g.viewing && target != g.target) {
 			return
 		}
 		target.Paste(text)

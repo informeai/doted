@@ -145,3 +145,23 @@ func TestSelectionCells(t *testing.T) {
 		t.Fatalf("selection cells %d..%d, want 6..12", from, to)
 	}
 }
+
+func TestAddWheelKeepsFractions(t *testing.T) {
+	var acc float64
+	// A trackpad's small steps add up to whole rows instead of rounding to
+	// nothing.
+	got := 0
+	for range 10 {
+		got += addWheel(&acc, 0.1) // 0.3 rows each
+	}
+	if got != 3 {
+		t.Fatalf("ten small steps up gave %d rows, want 3", got)
+	}
+	got = 0
+	for range 10 {
+		got += addWheel(&acc, -0.1)
+	}
+	if got != -3 {
+		t.Fatalf("ten small steps down gave %d rows, want -3", got)
+	}
+}

@@ -73,6 +73,8 @@ func (g *Game) handleJobViewKeys() {
 		g.closeJob()
 	case ctrlPressed(ebiten.KeyT) && !j.FullScreen():
 		g.openPanel()
+	case clipboardChord(ebiten.KeyC):
+		g.copySelection() // also once it has ended
 	case !j.Running():
 		// Nothing to type into any more: any of these goes back.
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyQ) {

@@ -134,3 +134,23 @@ func TestOnlyThePromptSparks(t *testing.T) {
 		t.Fatal("keys sent to a running program should not spark")
 	}
 }
+
+func TestPasteIntoTheJobBeingSentTo(t *testing.T) {
+	g := newTestGame(t)
+	fake(g).text = "pasted-text" // copied elsewhere
+	// Full screen while it reads a line, like a prompt in a TUI.
+	run(g, `printf '\033[?1049h'; read x; printf '\033[?1049l'; echo "got:$x"; sleep 30 &`)
+	j := g.jobs.Listed()[0]
+	tickUntil(t, g, func() bool { return j.FullScreen() })
+	g.sendToCard(j.ID)
+
+	g.pasteTo(j) // Cmd+V in the floating window
+	// The system clipboard is read in the background; take the text in.
+	for range 100 {
+		g.handleClipboardEvents()
+		time.Sleep(10 * time.Millisecond)
+	}
+	j.Write([]byte("\r"))
+	tickUntil(t, g, func() bool { return strings.Contains(jobText(j), "got:pasted-text") })
+	g.exitTarget()
+}

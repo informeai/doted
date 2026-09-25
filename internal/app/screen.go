@@ -113,17 +113,47 @@ func (g *Game) sendKeyboard(j *jobs.Job) bool {
 	return true
 }
 
-// scrollScreen turns the mouse wheel into arrow keys for a full-screen
-// program, as terminals do for pagers and editors.
-func (g *Game) scrollScreen(j *jobs.Job) {
-	_, dy := ebiten.Wheel()
-	code := uv.KeyUp
-	if dy < 0 {
-		code, dy = uv.KeyDown, -dy
+// scrollScreen sends steps of the mouse wheel (positive up) to a
+// full-screen program: as wheel events at the pointer when it asked for the
+// mouse (vim with mouse=a, htop), else as arrow keys, as terminals do for
+// pagers like less.
+func (g *Game) scrollScreen(j *jobs.Job, steps int) {
+	up := steps > 0
+	if !up {
+		steps = -steps
 	}
-	for range int(dy * wheelRows) {
+	if j.MouseTracking() && g.faces != nil {
+		mx, my := ebiten.CursorPosition()
+		x := max(0, int((float64(mx)-g.screenOrigin[0])/g.faces.cellW))
+		y := max(0, int((float64(my)-g.screenOrigin[1])/g.faces.lineH))
+		button := uv.MouseWheelDown
+		if up {
+			button = uv.MouseWheelUp
+		}
+		for range steps {
+			j.SendMouse(uv.MouseWheelEvent{X: x, Y: y, Button: button})
+		}
+		return
+	}
+	code := uv.KeyDown
+	if up {
+		code = uv.KeyUp
+	}
+	for range steps {
 		j.SendKey(uv.KeyPressEvent{Code: code})
 	}
+}
+
+// wheelScreen is the full-screen program the mouse wheel goes to: the one
+// on screen, or the one in the floating window.
+func (g *Game) wheelScreen() *jobs.Job {
+	if j := g.screenJob(); j != nil {
+		return j
+	}
+	if g.float.open && g.float.job.Running() && g.float.job.FullScreen() {
+		return g.float.job
+	}
+	return nil
 }
 
 // screenJob is the job whose full-screen program fills the output area, or
@@ -142,11 +172,13 @@ func (g *Game) screenJob() *jobs.Job {
 // top-left cell at (x, top).
 func (g *Game) drawScreen(dst *ebiten.Image, j *jobs.Job, x, top float64, now time.Time) {
 	f := g.faces
+	g.screenOrigin = [2]float64{x, top} // for the wheel to find cells under the pointer
 	scr := j.Screen()
 	h := scr.Height()
 	var row []terminal.Cell
 	for y := range h {
 		row = screenRow(j, y, row)
+		g.drawGridSelection(dst, j, y, len(row), x, top+float64(y)*f.lineH)
 		g.drawCells(dst, row, x, top+float64(y)*f.lineH, terminal.Output, 1)
 	}
 	if j.CursorVisible() {

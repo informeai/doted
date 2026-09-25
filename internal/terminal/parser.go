@@ -52,6 +52,9 @@ type Parser struct {
 
 	// AltScreen is set while the program asks for the alternate screen.
 	AltScreen bool
+	// MouseTracking is set while the program asks for mouse events (vim
+	// with mouse=a, htop), so the wheel goes to it as such.
+	MouseTracking bool
 }
 
 func NewParser(sb *Scrollback) *Parser {
@@ -273,8 +276,11 @@ func (p *Parser) csi(final byte, at time.Time) {
 	if private {
 		if final == 'h' || final == 'l' {
 			for _, a := range args {
-				if a == 47 || a == 1047 || a == 1049 {
+				switch a {
+				case 47, 1047, 1049:
 					p.AltScreen = final == 'h'
+				case 1000, 1002, 1003:
+					p.MouseTracking = final == 'h'
 				}
 			}
 		}

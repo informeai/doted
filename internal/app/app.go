@@ -4,6 +4,7 @@ package app
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"runtime"
 	"time"
@@ -104,6 +105,9 @@ type Game struct {
 	stripMaxScroll             float64                     // how far it can scroll, as of the last frame
 	stripScrolledAway          bool                        // scrolled off the newest cards by hand
 	wheelTaken                 bool                        // the strip used this tick's mouse wheel
+	wheelAcc                   float64                     // wheel movement short of a whole row; see addWheel
+	gridSel                    gridSelection               // text selected on a full-screen program's screen
+	screenOrigin               [2]float64                  // where a full-screen program was drawn last
 	stripGroup                 groupCard                   // the card grouping the jobs past the first ones
 	numEntry                   numberEntry                 // a job number being typed with Ctrl or Alt; see stripnav.go
 	stripRoom                  float64                     // how tall a card may grow: down to the output's bottom
@@ -300,6 +304,7 @@ func (g *Game) Update() error {
 	switch {
 	case (!g.panel.open || g.panel.kind == panelHistory) && clipboardChord(ebiten.KeyF):
 		g.openFind()
+	case g.handleScrollKeys():
 	case g.handleNumberKeys(time.Now()):
 	case g.handleStripKeys(time.Now()):
 	case g.panel.open && g.panel.kind == panelFind:
@@ -530,6 +535,7 @@ func (g *Game) forwardKeyboard(j *jobs.Job) {
 		return
 	}
 	if g.sendKeyboard(j) {
+		g.gridSel.clear() // what it selected may be about to change
 		g.scroll = 0
 		g.touch()
 		g.typed()
@@ -548,20 +554,69 @@ func (g *Game) syncPTYSize() {
 }
 
 func (g *Game) handleScrolling() {
-	if j := g.screenJob(); j != nil {
-		g.scrollScreen(j) // the wheel goes to the program; PgUp/PgDn go as keys
+	_, dy := ebiten.Wheel()
+	steps := addWheel(&g.wheelAcc, dy)
+	if g.wheelTaken { // the strip scrolled with it
+		steps, g.wheelAcc, g.wheelTaken = 0, 0, false
+	}
+	if j := g.wheelScreen(); j != nil {
+		g.scrollScreen(j, steps) // the wheel goes to the program; PgUp/PgDn go as keys
 		return
 	}
-	if _, dy := ebiten.Wheel(); dy != 0 && !g.wheelTaken {
-		g.scrollBy(int(dy * wheelRows))
+	if steps != 0 {
+		g.scrollBy(steps)
 	}
-	g.wheelTaken = false
 	switch {
 	case repeating(ebiten.KeyPageUp):
 		g.scrollBy(g.outputRows - 1)
 	case repeating(ebiten.KeyPageDown):
 		g.scrollBy(-(g.outputRows - 1))
 	}
+}
+
+// addWheel adds a wheel movement to acc and returns the whole rows it
+// makes, keeping the rest: a trackpad moves the wheel a fraction of a row
+// at a time, which would round to nothing on its own.
+func addWheel(acc *float64, dy float64) int {
+	*acc += dy * wheelRows
+	// Toward zero either way; the nudge keeps 0.9 × 10 from summing to
+	// 8.999… and losing a row.
+	n := int(*acc + math.Copysign(1e-9, *acc))
+	*acc -= float64(n)
+	return n
+}
+
+// handleScrollKeys scrolls the output from the keyboard, reporting whether
+// it took this tick's keyboard: Shift+Up and Shift+Down a row at a time,
+// Cmd+Home and Cmd+End (Ctrl elsewhere) to the start and the end. They
+// work at the prompt, in a job view and while a command runs, but belong
+// to a full-screen program or an open panel. PgUp and PgDn are in
+// handleScrolling.
+func (g *Game) handleScrollKeys() bool {
+	if g.panel.open || g.wheelScreen() != nil {
+		return false
+	}
+	shift := ebiten.IsKeyPressed(ebiten.KeyShift)
+	jump := ebiten.IsKeyPressed(ebiten.KeyMeta) || ebiten.IsKeyPressed(ebiten.KeyControl)
+	switch {
+	case shift && repeating(ebiten.KeyArrowUp):
+		g.scrollBy(1)
+	case shift && repeating(ebiten.KeyArrowDown):
+		g.scrollBy(-1)
+	case jump && inpututil.IsKeyJustPressed(ebiten.KeyHome):
+		g.scrollToStart()
+	case jump && inpututil.IsKeyJustPressed(ebiten.KeyEnd):
+		g.scroll = 0
+	default:
+		return false
+	}
+	return true
+}
+
+// scrollToStart scrolls up to the oldest line.
+func (g *Game) scrollToStart() {
+	g.scroll = 0
+	g.scrollBy(g.totalRows(g.visibleScrollback()))
 }
 
 func (g *Game) scrollBy(rows int) {
