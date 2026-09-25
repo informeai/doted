@@ -15,6 +15,11 @@ func (g *Game) submit() {
 	g.scrollback.Append(terminal.Command, g.promptText()+line, time.Now())
 
 	cmd, background := cutBackground(strings.TrimSpace(line))
+	if name, arg, _ := strings.Cut(cmd, " "); background && name == "pipeline" {
+		g.quitArmed = false
+		g.runPipeline(arg, time.Now()) // it runs in the background anyway
+		return
+	}
 	if cmd == "" || !background && g.runBuiltin(cmd) {
 		return // a trailing & always means a shell command, even for `exit 3 &`
 	}
@@ -24,6 +29,11 @@ func (g *Game) submit() {
 		return
 	}
 	g.startBlock(cmd, j, background, time.Now())
+	if background {
+		g.record(cmd+" &", j)
+	} else {
+		g.record(cmd, j)
+	}
 	if background {
 		j.Listed = true
 		g.jobNotice("[%d] running in background: %s · ctrl+t to see jobs", j.ID, j.Command)
@@ -61,6 +71,8 @@ func (g *Game) runBuiltin(cmd string) bool {
 		g.openHelp()
 	case "fg":
 		g.fg(arg)
+	case "pipeline":
+		g.runPipeline(arg, time.Now())
 	default:
 		return false
 	}

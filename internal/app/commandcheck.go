@@ -24,7 +24,7 @@ const (
 
 // dotedBuiltins are the names runBuiltin handles.
 var dotedBuiltins = map[string]bool{
-	"jobs": true, "fg": true, "help": true, "exit": true, "quit": true,
+	"jobs": true, "fg": true, "help": true, "exit": true, "quit": true, "pipeline": true,
 }
 
 // lookupTTL is how long a lookup is trusted, so a program installed while
@@ -79,7 +79,7 @@ func (g *Game) classifyCommand(line string, now time.Time) commandKind {
 	word := string(runes[start:end])
 	_, background := cutBackground(strings.TrimSpace(line))
 	switch {
-	case dotedBuiltins[word] && !background: // `exit 3 &` goes to the shell
+	case dotedBuiltins[word] && (!background || word == "pipeline"): // `exit 3 &` goes to the shell; `pipeline x &` doesn't
 		return commandBuiltin
 	case shell.IsShellBuiltin(word), g.session.IsDefined(word): // aliases and functions too
 		return commandFound

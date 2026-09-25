@@ -44,9 +44,10 @@ func TestClassifyCommand(t *testing.T) {
 		"clear":                commandFound,
 		"jobs":                 commandBuiltin,
 		"help":                 commandBuiltin,
-		"exit 3 &":             commandFound, // with & it runs in the shell, where exit is a builtin
-		"sh -c true":           commandFound, // in the PATH
-		"echo hi":              commandFound, // shell builtin, not in the PATH
+		"exit 3 &":             commandFound,   // with & it runs in the shell, where exit is a builtin
+		"pipeline demo &":      commandBuiltin, // doted runs it, & or not
+		"sh -c true":           commandFound,   // in the PATH
+		"echo hi":              commandFound,   // shell builtin, not in the PATH
 		"FOO=1 sh":             commandFound,
 		"./run.sh":             commandFound, // relative to doted's directory
 		"./missing.sh":         commandMissing,

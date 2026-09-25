@@ -631,8 +631,12 @@ func (g *Game) drawStatus(dst *ebiten.Image, left, y, right float64, now time.Ti
 	f := g.faces
 	hint, spinner := g.statusHint(now)
 	hintClr := g.theme.Muted
-	if u := g.updateHint(now); u != "" && hint == u {
+	switch {
+	case hint == "":
+	case hint == g.updateHint(now):
 		hintClr = g.theme.ANSI[2] // a newer release is good news: green
+	case hint == g.recordingHint():
+		hintClr = g.theme.Error // red, as recorders go
 	}
 
 	// Keep the title readable on narrow windows: the hint gives way first.
@@ -700,6 +704,8 @@ func (g *Game) statusHint(now time.Time) (hint string, spinner bool) {
 		hint = jobResult(g.viewing) + " after " + formatElapsed(g.viewing.Elapsed(now))
 	case g.attached != nil:
 		hint, spinner = "running · ctrl+b background · ctrl+c interrupt", true
+	case g.recording != nil:
+		hint = g.recordingHint()
 	default:
 		if n := g.jobs.RunningInBackground(); n > 0 {
 			hint, spinner = fmt.Sprintf("%d background %s · ctrl+t", n, plural(n, "job", "jobs")), true

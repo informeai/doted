@@ -118,6 +118,9 @@ type Game struct {
 	float                      floatWindow                 // a full-screen job being sent to; see jobfloat.go
 	stripTop                   float64                     // where the strip was drawn last
 	target                     *jobs.Job                   // the job the input line sends to; see jobcontrol.go
+	pipes                      map[*jobs.Job]*pipelineJob  // the jobs running pipelines; see pipeline.go
+	pipeFailed                 map[string]int              // the step each pipeline last failed at
+	recording                  *pipelineRecording          // the pipeline being recorded
 	targetRaw                  bool                        // it reads a key at a time
 	stash                      string                      // the shell line put aside meanwhile
 	opener                     func(*Game, []string) error // starts the program that opens a link
@@ -367,6 +370,8 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 func (g *Game) handleJobEvent(j *jobs.Job, ev shell.Event) {
 	if ev.Done {
 		g.endBlock(j, time.Now())
+		// Once the main view is free of it: the next step may take it.
+		defer g.pipelineJobDone(j)
 	}
 	if j == g.attached {
 		if !ev.Done {

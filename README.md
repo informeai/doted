@@ -124,7 +124,49 @@ Digite `help` para ver a lista abaixo e os atalhos dentro do próprio doted (a b
 - `jobs`: abre a lista de jobs
 - `fg [n]`: abre o job `n` (ou o mais recente); também aceita `fg %n`
 - `help`: lista os comandos e atalhos
+- `pipeline [nome]`: roda um pipeline do `pipeline.toml`, ou lista os pipelines (veja abaixo)
+- `pipeline record <nome>` / `pipeline stop`: grava os comandos que você roda como um pipeline
+- `pipeline remove <nome>`: tira um pipeline do `pipeline.toml`
 - `exit` / `quit`: fecha o doted. Se houver jobs rodando, pede confirmação (repita o comando para matá-los e sair)
+
+### Pipelines
+
+Um pipeline é uma sequência de comandos com nome, guardada no `pipeline.toml`, na mesma pasta do `config.toml` (`~/.config/doted/pipeline.toml`, ou `$XDG_CONFIG_HOME/doted`):
+
+```toml
+[check]
+description = "vet, test e build"
+steps = ["go vet ./...", "go test ./...", "go build ./..."]
+
+[dev]
+parallel = true
+steps = ["npm run dev", "go run ./cmd/api"]
+
+[release]
+steps = ["pipeline check", "git tag v$1", "git push origin v$1"]
+```
+
+- `pipeline` lista os pipelines do arquivo.
+- `pipeline check` roda o pipeline em segundo plano, como um único job, com um único cartão chamado `pipeline check`. À direita, o cartão mostra o passo atual (`step 2/3`), e embaixo, a saída conforme ela chega. Cada passo começa com uma linha de marcação, `▸ check 2/3 · go test ./...`. Os passos rodam um depois do outro, no diretório atual e no mesmo shell (um `cd` num passo vale para os seguintes). O primeiro passo que falhar interrompe o resto, e o doted avisa onde parou: `✗ pipeline check failed at step 2/3: go test ./... · exit 1 · pipeline check --from 2 resumes there`. A linha do `pipeline check` na saída mostra o resultado e o tempo, como um comando.
+- O cartão funciona como o de qualquer job: clicar (ou Ctrl+número) abre a saída inteira do pipeline, **stop** interrompe, **restart** roda de novo (relendo o `pipeline.toml`) e **send** envia texto para o passo que está rodando.
+- `$OUT` é a saída do passo anterior, sem as quebras de linha do fim:
+
+  ```toml
+  [image]
+  steps = ["git rev-parse --short HEAD", "docker build -t app:$OUT ."]
+  ```
+
+  O passo anterior continua mostrando o que imprimiu, mas, como a saída dele é capturada, ele não roda num terminal (alguns programas perdem as cores). O `$OUT` não funciona depois de um passo paralelo ou em segundo plano.
+- `pipeline check --from 2` começa no segundo passo. Só `--from`, sem número, retoma do passo que falhou na última vez (na mesma sessão).
+- `parallel = true` roda todos os passos ao mesmo tempo, no mesmo cartão, e o pipeline espera todos terminarem.
+- Um passo `pipeline <outro>` roda aquele pipeline naquele ponto. Um pipeline paralelo vira um único passo do pipeline que o chama.
+- `$1`, `$2`... são as palavras digitadas depois do nome, e `$@` são todas elas: `pipeline release 1.2.0`. Se faltar alguma, o doted avisa antes de começar.
+- Um passo terminado em `&` roda junto com os passos seguintes, e é encerrado quando o pipeline termina (bom para subir um servidor antes dos testes).
+- Com o doted em segundo plano, um pipeline que levou pelo menos 10 segundos mostra uma notificação do sistema ao terminar, como os comandos.
+
+**Gravar**: `pipeline record deploy` começa a gravar, e a barra de status mostra, em vermelho, `● recording deploy · 2 steps · pipeline stop saves`. Os comandos que você roda a partir daí entram no pipeline, menos os que falharem. `pipeline stop` salva no `pipeline.toml`, criando o arquivo se ele não existir. Se já houver um pipeline com o mesmo nome, ele é substituído no mesmo lugar, e o resto do arquivo fica como estava.
+
+**Remover**: `pipeline remove deploy` tira o pipeline do `pipeline.toml`, junto com os comentários logo acima dele, e o resto do arquivo fica como estava. Dá para remover vários de uma vez (`pipeline remove a b`). Se outro pipeline chamar o que foi removido (`pipeline deploy` como passo), o doted avisa: `removed pipeline deploy from ~/.config/doted/pipeline.toml · release still calls it`. Os nomes `record`, `stop` e `remove` são reservados e não podem ser usados em pipelines.
 
 ### Jobs em segundo plano
 
@@ -311,6 +353,7 @@ internal/
   fonts/                 resolução da fonte por nome ou arquivo, com variantes
   jobs/                  jobs em execução ou finalizados, cada um com sua saída
   notify/                notificações do sistema (osascript, notify-send, PowerShell)
+  pipeline/              pipeline.toml: leitura, expansão dos passos e gravação
   update/                consulta da última release no GitHub, com cache diário
   shell/                 sessão (shell, ambiente, diretório) e processos em PTY
   terminal/              modelo sem dependência de UI

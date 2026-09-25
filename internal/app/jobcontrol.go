@@ -35,7 +35,13 @@ func (g *Game) restartJob(j *jobs.Job) {
 		g.flash("restarting " + w.name)
 		return
 	}
-	next, err := g.jobs.Start(g.session, j.Command, g.cols, g.outputRows, time.Now())
+	var next *jobs.Job
+	var err error
+	if p := g.pipes[j]; p != nil {
+		next, err = g.startPipeline(p.line, time.Now()) // pipeline.toml may have changed
+	} else {
+		next, err = g.jobs.Start(g.session, j.Command, g.cols, g.outputRows, time.Now())
+	}
 	if err != nil {
 		g.flash("could not restart " + w.name + ": " + err.Error())
 		return

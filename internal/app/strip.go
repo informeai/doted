@@ -112,6 +112,10 @@ func (g *Game) watchJobs(now time.Time) {
 		for seq := max(w.scanned, out.Seq(0)); seq < end; seq++ {
 			i, _ := out.Index(seq)
 			line := out.At(i).Text()
+			if g.followPipeline(j, line) {
+				w.failing = false // the step before passed
+				continue
+			}
 			if w.url == "" {
 				w.url = strings.TrimRight(localURL.FindString(line), ".,;:)]")
 			}
@@ -125,10 +129,20 @@ func (g *Game) watchJobs(now time.Time) {
 			}
 		}
 		w.scanned = max(w.scanned, end)
+		// A pipeline's step starts with its marker, which stays the newest
+		// line while the step prints nothing.
+		if j.Running() && end == out.Seq(out.Len()-1) {
+			g.followPipeline(j, out.At(out.Len()-1).Text())
+		}
 	}
 	for j := range g.watches {
 		if !alive[j] {
 			delete(g.watches, j)
+		}
+	}
+	for j := range g.pipes {
+		if !alive[j] && !j.Running() {
+			delete(g.pipes, j)
 		}
 	}
 }
@@ -373,6 +387,8 @@ func (g *Game) drawCardContent(dst *ebiten.Image, j *jobs.Job, wt *jobWatch, x, 
 		spots = []spot{{"restart", "restart"}}
 	case j.Running() && j.FullScreen():
 		spots = []spot{{"full screen", "label"}}
+	case j.Running() && g.pipelineLabel(j) != "":
+		spots = []spot{{g.pipelineLabel(j), "label"}}
 	case wt.url != "":
 		spots = []spot{{strings.TrimPrefix(strings.TrimPrefix(wt.url, "http://"), "https://"), ""}}
 	}

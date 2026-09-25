@@ -21,6 +21,9 @@ var helpCommands = []helpCommand{
 	{"jobs", "jobs", "list background jobs"},
 	{"fg [n]", "fg ", "open job n, or the newest one"},
 	{"<command> &", "", "start a command in the background"},
+	{"pipeline [name]", "pipeline ", "run a pipeline from pipeline.toml (--from n starts at step n), or list them"},
+	{"pipeline record", "pipeline record ", "pipeline record <name> records the commands you run · pipeline stop saves it"},
+	{"pipeline remove", "pipeline remove ", "pipeline remove <name> takes a pipeline out of pipeline.toml"},
 	{"help", "help", "show this list"},
 	{"exit", "exit", "quit doted"},
 }
